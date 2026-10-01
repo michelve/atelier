@@ -1,0 +1,17 @@
+# The engine folder when it lives inside the clone (ATELIER_ENGINE unset): ComfyUI, ~130 GB models, venvs
+engine/
+# Generated output (images, renders, test runs, web builds) - regenerable, large
+images/
+scratch/
+web/
+*.refkit/
+# Personal files, not part of the workflow
+docs/
+gemini-spend.csv
+# Tooling caches
+__pycache__/
+*.pyc
+.ruff_cache/
+# Setup scripts: machine backups and run logs stay local
+setup/backup/
+setup/logs/

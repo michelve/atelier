@@ -1,0 +1,97 @@
+"""refkit smoke: after a ComfyUI update, prove the pipeline still works (fast, ~1 min).
+
+  1. re-export every workflow in studio\\workflows from the bundled templates when the templates package changed
+     (AISetup\\templates\\export-comfy-workflows.py, the real frontend's graphToPrompt)
+  2. validate every workflow's node classes / input names against the running server's /object_info
+  3. run a tiny Z-Image generation and a BiRefNet cutout end to end; write smoke.png (contact sheet)
+Exit code 1 on any failure, so update-tools.ps1 can report it.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+from PIL import Image
+
+from . import comfy, cutout, gen
+from .common import REPO, SCRATCH, RefkitError, log
+
+COMFY_TEMPLATES_PKG = "comfyui-workflow-templates"
+EXPORTER = REPO / "setup" / "templates" / "export-comfy-workflows.py"
+STAMP = comfy.WORKFLOWS / ".templates-version"
+OUT = SCRATCH / "smoke"
+
+
+def exporter_python() -> str:
+    """A Python that has Playwright (the exporter drives the real ComfyUI frontend). refkit's own venv doesn't, and
+    it may be first on PATH here, so: ATELIER_PYTHON if set, else every python on PATH, first one that works."""
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONNOUSERSITE"}
+    found = subprocess.run(["where", "python"], capture_output=True, text=True).stdout.split() if os.name == "nt" \
+        else [p for p in (shutil.which("python3"), shutil.which("python")) if p]
+    for py in [os.environ.get("ATELIER_PYTHON"), *found, "py"]:
+        if not py or str(Path(py).resolve()).startswith(str(Path(os.sys.prefix).resolve())):
+            continue
+        ok = subprocess.run([py, "-c", "import playwright"], capture_output=True, env=env).returncode == 0
+        if ok:
+            return py
+    raise RefkitError("refkit: no Python with Playwright found for the workflow exporter "
+                      "(pip install playwright && python -m playwright install chromium, or set ATELIER_PYTHON)")
+
+
+def templates_version() -> str:
+    """Version of ComfyUI's bundled templates package (read from the embedded Python, not ours)."""
+    py = comfy.COMFY_DIR / "python_embeded" / "python.exe"
+    r = subprocess.run([str(py), "-s", "-c", f"import importlib.metadata as m; print(m.version('{COMFY_TEMPLATES_PKG}'))"],
+                       capture_output=True, text=True)
+    return r.stdout.strip() or "unknown"
+
+
+def reexport(force: bool = False) -> bool:
+    ver = templates_version()
+    if not force and STAMP.exists() and STAMP.read_text().strip() == ver:
+        log(f"workflows current for templates {ver}")
+        return True
+    names = sorted(p.name.removesuffix(".api.json") for p in comfy.WORKFLOWS.glob("*.api.json"))
+    log(f"re-exporting {len(names)} workflows for templates {ver}…")
+    r = subprocess.run([exporter_python(), str(EXPORTER),
+                        "--comfy", str(comfy.COMFY_DIR), "--out", str(comfy.WORKFLOWS), "--url", comfy.url(), *names],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       # Playwright is in the system Python's user site; refkit's shim sets PYTHONNOUSERSITE=1.
+                       env={k: v for k, v in os.environ.items() if k != "PYTHONNOUSERSITE"})
+    if r.returncode:
+        log(f"export FAILED:\n{(r.stderr or r.stdout)[-1500:]}")
+        return False
+    STAMP.write_text(ver)
+    return True
+
+
+def main(args) -> bool:
+    ok = True
+    comfy.ensure_running()
+    if not args.no_export:
+        ok &= reexport(args.force_export)
+    for wf in sorted(comfy.WORKFLOWS.glob("*.api.json")):
+        problems = comfy.validate(comfy.load_workflow(wf.name.removesuffix(".json")))
+        log(f"{'OK  ' if not problems else 'FAIL'} {wf.name}" + ("" if not problems else "\n    " + "\n    ".join(problems)))
+        ok &= not problems
+    OUT.mkdir(parents=True, exist_ok=True)
+    try:
+        class A:  # the gen CLI namespace, minimal
+            list = False; recipe = None; model = "z-image"; image = None; size = "768x768"; seed = 1; count = 1; out = str(OUT); yes = False; enhance = False
+            prompt = "a white ceramic mug on a wooden table, soft daylight, product photo"
+        img = gen.main(A)[0]
+        cut = cutout.cut(img, OUT)
+        sheet = Image.new("RGB", (1536, 768), "#808080")
+        sheet.paste(Image.open(img).convert("RGB").resize((768, 768)), (0, 0))
+        c = Image.open(cut).convert("RGBA").resize((768, 768))
+        sheet.paste(c, (768, 0), c)
+        sheet.save(OUT / "smoke.png")
+        log(f"end-to-end OK -> {OUT / 'smoke.png'} (look at it)")
+    except RefkitError as e:
+        log(f"end-to-end FAILED: {e}")
+        ok = False
+    log("SMOKE PASS" if ok else "SMOKE FAIL")
+    return ok
+

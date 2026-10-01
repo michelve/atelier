@@ -1,0 +1,23 @@
+/*
+ * Motion tokens. Durations drop to 0ms under reduced motion, so anything timed with them stops
+ * moving without extra code. Easings keep running, and so do custom timings: a choreographed piece
+ * names its own as --t-* on its root rule and gives itself a reduced-motion block.
+ * Put this in the project's token file (inside its token layer, if it uses cascade layers).
+ */
+:root {
+  --dur-1: 200ms;  /* hover, press, focus, colour changes */
+  --dur-2: 600ms;  /* entrances, state changes, panels */
+  --dur-3: 1200ms; /* deliberate reveals: a chart drawing, a hero entrance */
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);      /* arriving and settling; the default */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* moving from A to B, wipes and masks */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* a small overshoot: pops, chips, confirmations */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+  }
+}

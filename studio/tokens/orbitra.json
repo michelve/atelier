@@ -1,0 +1,25 @@
+{
+  "name": "Orbitra project tokens (use with --tokens only when working on Orbitra)",
+  "palette": {
+    "lavender-50": "#ece8ff",
+    "lavender-300": "#a79dff",
+    "periwinkle": "#8f86ff",
+    "violet": "#8f6bff",
+    "blue": "#5f6fff",
+    "blue-deep": "#4f6fff",
+    "void": "#0d0d12",
+    "page": "#020305",
+    "white": "#ffffff"
+  },
+  "max_delta_e": 12,
+  "forbid_teal": true,
+  "budgets": {
+    "png_kb": 400,
+    "webp_kb": 200,
+    "avif_kb": 150,
+    "svg_kb": 60,
+    "glb_kb": 3000,
+    "glb_triangles": 150000,
+    "texture_px": 2048
+  }
+}

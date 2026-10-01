@@ -1,0 +1,9 @@
+{
+  "venvPath": "../engine/venvs",
+  "venv": "refkit",
+  "pythonVersion": "3.12",
+  "exclude": [
+    "**/*.refkit",
+    "refkit/blender"
+  ]
+}
