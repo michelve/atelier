@@ -61,18 +61,17 @@ VIDEO_PRICE = {  # per second by resolution
 
 
 def load_key() -> None:
-    # A terminal opened before the key was saved won't have it; fall back to the registry.
+    # A terminal opened before the key was saved won't have it: fall back to where the setup saved it
+    # (the user environment in the Windows registry; the login Keychain on macOS).
     if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         return
-    if sys.platform == "win32":
-        import winreg
+    sys.path.insert(0, str(HERE / "studio"))
+    from refkit import host
 
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
-                os.environ["GEMINI_API_KEY"] = winreg.QueryValueEx(k, "GEMINI_API_KEY")[0]
-                return
-        except OSError:
-            pass
+    key = host.secret("GEMINI_API_KEY")
+    if key:
+        os.environ["GEMINI_API_KEY"] = key
+        return
     sys.exit("GEMINI_API_KEY is not set. Get one at https://aistudio.google.com/apikey")
 
 

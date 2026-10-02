@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import colorsys
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -13,19 +12,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
-
-def saved_env(name: str) -> str | None:
-    """Process env first; else the user-level value saved in the registry (a terminal opened before it was set)."""
-    if os.environ.get(name):
-        return os.environ[name]
-    if os.name == "nt":
-        import winreg
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
-                return winreg.QueryValueEx(k, name)[0]
-        except OSError:
-            return None
-    return None
+from .host import saved_env
 
 # Nothing machine-specific: the repo is found from this file, the engine folder from ATELIER_ENGINE.
 REPO = Path(__file__).resolve().parents[2]            # <repo>/studio/refkit/common.py

@@ -4,7 +4,7 @@
   refkit bench --set "ck=--use-ck-attention" --set "fast=--fast fp16_accumulation cublas_ops"
   refkit bench --full                  also time one Pixal3D image->3D job per flag set (~100 s each)
 
-Each set restarts our ComfyUI with `comfy.cmd <flags>` on :8188 (any server of ours is stopped first), runs:
+Each set restarts our ComfyUI with `comfy <flags>` (the shim) on :8188 (any server of ours is stopped first), runs:
 Z-Image cold (includes model load), Z-Image warm x3, FLUX.2 klein edit, then Z-Image again (model A->B->A
 switch: catches the int8 ConvRot reload stall, comfy-kitchen #196). Outputs are compared with the first set's
 (mean absolute pixel difference) so a faster flag that changes the picture is visible, not just its speed.
@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 from . import comfy, gen, to3d
-from .common import SCRATCH, STUDIO_ROOT, RefkitError, log, say
+from .common import SCRATCH, RefkitError, log, say
 
 # Launch flags are compared with refkit's per-workflow Comfy Kitchen node switched off (it would otherwise run in every
 # set); "kitchen-node" is the baseline flags with the node on, i.e. what refkit actually runs.
@@ -66,10 +66,7 @@ class VramPeak:
 
 def start(flags: str, timeout: int = 240) -> subprocess.Popen:
     comfy.stop()
-    cmd = [str(Path.home() / ".local" / "bin" / "comfy.cmd"), "--port", "8188", *flags.split()]
-    logf = open(STUDIO_ROOT / "comfyui.log", "ab")
-    proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                            creationflags=subprocess.CREATE_NO_WINDOW, env={**__import__("os").environ, "PYTHONNOUSERSITE": "1"})
+    proc = comfy.launch(8188, flags.split(), new_group=False)
     t = time.time()
     while time.time() - t < timeout:
         if comfy.find():

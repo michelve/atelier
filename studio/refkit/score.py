@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import gpu
+from . import gpu, host
 from .common import MODELS, STUDIO_ROOT, log, run
 
 CACHE = MODELS / "scoring"
@@ -29,7 +29,7 @@ HPS_WEIGHTS = CACHE / "HPSv3-PlusPlus-bnb-NF4"
 
 def hpsv3pp(prompt: str, images: list[Path]) -> list[float] | None:
     """HPSv3++ scores, or None when the tool or its weights aren't installed (caller falls back)."""
-    exe = HPS_TOOL / ".venv" / "Scripts" / "hpsv3pp-score.exe"
+    exe = host.venv_bin(HPS_TOOL / ".venv", "hpsv3pp-score")
     if not (exe.exists() and (HPS_WEIGHTS / "config.json").exists()):
         return None
     gpu.free_vram()

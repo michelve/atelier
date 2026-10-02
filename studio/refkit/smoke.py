@@ -11,13 +11,13 @@ Exit code 1 on any failure, so update-tools.ps1 can report it.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image
 
-from . import comfy, cutout, gen
+from . import comfy, cutout, gen, host
 from .common import REPO, SCRATCH, RefkitError, log
 
 COMFY_TEMPLATES_PKG = "comfyui-workflow-templates"
@@ -27,13 +27,15 @@ OUT = SCRATCH / "smoke"
 
 
 def exporter_python() -> str:
-    """A Python that has Playwright (the exporter drives the real ComfyUI frontend). refkit's own venv doesn't, and
-    it may be first on PATH here, so: ATELIER_PYTHON if set, else every python on PATH, first one that works."""
+    """A Python that has Playwright (the exporter drives the real ComfyUI frontend). On Windows refkit's own venv
+    doesn't, and it may be first on PATH, so: ATELIER_PYTHON if set, else every python on PATH, first one that works.
+    On macOS the setup installs Playwright into refkit's venv, so that one is used."""
+    if not host.WINDOWS:
+        return os.environ.get("ATELIER_PYTHON") or sys.executable
     env = {k: v for k, v in os.environ.items() if k != "PYTHONNOUSERSITE"}
-    found = subprocess.run(["where", "python"], capture_output=True, text=True).stdout.split() if os.name == "nt" \
-        else [p for p in (shutil.which("python3"), shutil.which("python")) if p]
+    found = subprocess.run(["where", "python"], capture_output=True, text=True).stdout.split()
     for py in [os.environ.get("ATELIER_PYTHON"), *found, "py"]:
-        if not py or str(Path(py).resolve()).startswith(str(Path(os.sys.prefix).resolve())):
+        if not py or str(Path(py).resolve()).startswith(str(Path(sys.prefix).resolve())):
             continue
         ok = subprocess.run([py, "-c", "import playwright"], capture_output=True, env=env).returncode == 0
         if ok:
@@ -43,8 +45,8 @@ def exporter_python() -> str:
 
 
 def templates_version() -> str:
-    """Version of ComfyUI's bundled templates package (read from the embedded Python, not ours)."""
-    py = comfy.COMFY_DIR / "python_embeded" / "python.exe"
+    """Version of ComfyUI's bundled templates package (read from ComfyUI's own Python, not ours)."""
+    py = host.engine_python(comfy.COMFY_DIR)
     r = subprocess.run([str(py), "-s", "-c", f"import importlib.metadata as m; print(m.version('{COMFY_TEMPLATES_PKG}'))"],
                        capture_output=True, text=True)
     return r.stdout.strip() or "unknown"

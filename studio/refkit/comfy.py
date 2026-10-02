@@ -18,6 +18,7 @@ from pathlib import Path
 
 import requests
 
+from . import host
 from .common import STUDIO, STUDIO_ROOT, RefkitError, log
 
 WORKFLOWS = STUDIO / "workflows"
@@ -36,9 +37,10 @@ def _stats(base: str) -> dict | None:
 
 def _ours(stats: dict) -> bool:
     """Our install: the `comfy` shim runs a relative ComfyUI\\main.py but always passes engine-folder paths
-    (--extra-model-paths-config / --output-directory); Comfy Desktop's record uses the absolute main.py path."""
+    (--extra-model-paths-config / --output-directory); Comfy Desktop's record uses the absolute main.py path.
+    Both sides use backslashes for the comparison, so it holds for Windows and POSIX paths alike."""
     argv = " ".join(stats.get("system", {}).get("argv", [])).lower().replace("/", "\\")
-    return str(STUDIO_ROOT).lower() + "\\" in argv
+    return str(STUDIO_ROOT).lower().replace("/", "\\") + "\\" in argv
 
 
 def find() -> str | None:
@@ -94,6 +96,17 @@ def housekeeping(days: int = 14, log_mb: int = 50) -> None:
                 pass
 
 
+def launch(port: int, extra: list[str] | None = None, new_group: bool = True) -> subprocess.Popen:
+    """Start our server through the `comfy` shim the setup writes (engine paths and launch flags live there)."""
+    shim = host.shim("comfy")
+    if not shim.exists():
+        raise RefkitError(f"refkit: {shim} is missing; run the setup's local AI step (Setup.cmd, step 5)")
+    logf = open(STUDIO_ROOT / "comfyui.log", "ab")
+    return subprocess.Popen([str(shim), "--port", str(port), *(extra or [])],
+                            env=os.environ | {"PYTHONNOUSERSITE": "1"}, stdout=logf, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL, **host.background(new_group))
+
+
 def ensure_running(timeout: int = 180) -> str:
     global _url
     if up():
@@ -101,11 +114,7 @@ def ensure_running(timeout: int = 180) -> str:
     housekeeping()
     port = _free_port()
     log(f"starting ComfyUI (headless, local-only) on :{port}…")
-    env = os.environ | {"PYTHONNOUSERSITE": "1"}
-    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
-    logf = open(STUDIO_ROOT / "comfyui.log", "ab")
-    proc = subprocess.Popen([str(Path.home() / ".local" / "bin" / "comfy.cmd"), "--port", str(port)], env=env,
-                            creationflags=flags, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    proc = launch(port)
     base = f"http://127.0.0.1:{port}"
     t = time.time()
     while time.time() - t < timeout:
@@ -119,19 +128,19 @@ def ensure_running(timeout: int = 180) -> str:
     raise RefkitError(f"refkit: ComfyUI did not come up on {base}; see {STUDIO_ROOT / 'comfyui.log'}")
 
 
-def _pids_on(port: int) -> set[int]:
-    out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True).stdout
-    return {int(m.group(1)) for m in re.finditer(rf"127\.0\.0\.1:{port}\s+\S+\s+LISTENING\s+(\d+)", out)}
-
-
-def stop() -> None:
+def stop(tries: int = 5) -> None:
     """Stop our server(s): tree-kill whatever listens on its port."""
     global _url
-    while (base := find()):
-        for pid in _pids_on(int(base.rsplit(":", 1)[1])):
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+    for _ in range(tries):
+        base = find()
+        if not base:
+            return
+        for pid in host.listening_pids(int(base.rsplit(":", 1)[1])):
+            host.kill_tree(pid)
         _url = None
         time.sleep(2)
+    if base := find():
+        raise RefkitError(f"refkit: could not stop ComfyUI at {base} (nothing to kill on its port?)")
 
 
 def jobs(base: str) -> tuple[int, int]:
