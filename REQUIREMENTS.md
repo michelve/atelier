@@ -4,9 +4,10 @@ Generated 2026-10-02 by `setup/shared/py/export-requirements.py` from the live m
 installing or updating anything (`python setup\shared\py\export-requirements.py`).
 
 ## Platform
-- **Windows 11 + NVIDIA GPU only** as built (Windows-11-10.0.26200-SP0). GPU: NVIDIA GeForce RTX 4080 SUPER, 616.92, 16376 MiB.
+- **Windows 11 + NVIDIA GPU** for the full build (Windows-11-10.0.26200-SP0). GPU: NVIDIA GeForce RTX 4080 SUPER, 616.92, 16376 MiB.
   The local models are int8/fp8 files with CUDA-only kernels (comfy-kitchen); Pixal3D/TRELLIS and SeedVR2 need
-  CUDA. `nanobanana.py`, Blender, ffmpeg and the vector/QA tools are cross-platform; `setup/` is PowerShell + winget/scoop.
+  CUDA. `nanobanana.py`, Blender, ffmpeg and the vector/QA tools are cross-platform: a Mac runs that part
+  (`REQUIREMENTS-macos.md`). `setup/` is PowerShell 7 on both (`setup/windows`: winget/scoop; `setup/macos`: Homebrew).
 - Disk: models ~304 GB in `<engine>\models`; ComfyUI portable + venvs ~15 GB. `<engine>` =
   `ATELIER_ENGINE` (default `<repo>\engine`).
 - Accounts/keys: `GEMINI_API_KEY` (user env var, paid Google calls). GitHub CLI login for the repo.

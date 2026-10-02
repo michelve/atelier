@@ -1,6 +1,6 @@
 ---
 name: refkit
-description: Atelier, the local-first visual production pipeline — use in ANY project or folder for any image, logo, icon, illustration, SVG, UI graphic, texture, 3D model, render, turntable, video clip, animation/motion or visual asset, and whenever the user pastes or points to a reference/inspiration image ("make this", "match this", "recreate", "trace/vectorize", "turn into 3D", "cut out", "upscale", "animate", "render", "make a video", "polish", "production-ready"). Covers the whole chain analyze → cutout → vectorize → gen/edit → upscale → to3d → render → video → qa, model choice per job (local Qwen-Image 2.1 / Krea 2 / Z-Image / SeedVR2 vs paid Google Nano Banana / Omni / Veo), per-model prompting, best-of-N picking, detail checklists and recipes. Runs locally on the NVIDIA GPU; Claude is the eyes and art director; Google (own key) is the one approved cloud exception.
+description: Atelier, the local-first visual production pipeline — use in ANY project or folder for any image, logo, icon, illustration, SVG, UI graphic, texture, 3D model, render, turntable, video clip, animation/motion or visual asset, and whenever the user pastes or points to a reference/inspiration image ("make this", "match this", "recreate", "trace/vectorize", "turn into 3D", "cut out", "upscale", "animate", "render", "make a video", "polish", "production-ready"). Covers the whole chain analyze → cutout → vectorize → gen/edit → upscale → to3d → render → video → qa, model choice per job (local Qwen-Image 2.1 / Krea 2 / Z-Image / SeedVR2 vs paid Google Nano Banana / Omni / Veo), per-model prompting, best-of-N picking, detail checklists and recipes. Runs locally (everything on the Windows NVIDIA PC; on a Mac: analyze, vectorize, render, QA and the Google models - `refkit status` says what runs); Claude is the eyes and art director; Google (own key) is the one approved cloud exception.
 ---
 
 # refkit — reference in, polished deliverable out
@@ -10,8 +10,10 @@ You (Claude) are the art director and the vision model: look at every reference 
 **Google Gemini (Nano Banana, Gemini Omni, Veo) with the user's own key**, which is approved but **paid** — see
 "Cost rules". Don't use Ollama unless asked.
 
-`refkit` is on PATH everywhere (`~\.local\bin\refkit.cmd`); `refkit <cmd> -h` for options, `refkit status` for
-what's installed/running (incl. how many ComfyUI jobs are running/queued). Source `<repo>\studio\refkit` (the
+`refkit` is on PATH everywhere (`~/.local/bin/refkit`, `refkit.cmd` on Windows); `refkit <cmd> -h` for options,
+`refkit status` for what's installed/running (incl. how many ComfyUI jobs are running/queued) and, under
+"capabilities", what this machine can run: a Mac has no CUDA, so to3d, upscale, fix, critique, bench and the local
+gen/video models stop at once and name the alternative (Google models with --yes, or the Windows PC). Source `<repo>\studio\refkit` (the
 Atelier git repo — fix bugs there, commit, keep it working for all sessions). After a ComfyUI update:
 `refkit smoke` (it restarts our server onto the new version when no jobs run). To re-tune speed flags:
 `refkit bench` (restarts ComfyUI; refuses while jobs run).
@@ -29,7 +31,7 @@ Paths below: `<repo>` = the Atelier clone, `<engine>` = `ATELIER_ENGINE` (ComfyU
 3. **Route** — pick the tool/model with the tables below (details in `reference/recipes.md`).
 4. **Write the prompt for that model** (`refkit gen --recipe MODEL` prints its recipe; refkit also prints
    "prompt tip" warnings). Prompts containing `"` quotes → put them in a UTF-8 file and use `--prompt-file`
-   (the .cmd shim re-splits quoted arguments).
+   (the Windows .cmd shim re-splits quoted arguments).
 5. **Explore → pick → finish.** Drafts: `-n 4 --pick` (HPSv3++ ranks text→image, EditScore ranks edits against the
    source, PickScore if those aren't installed; writes `contact.png` best-first) or `--auto` (adds the local critic,
    a text check and a second round; writes `report.md`) → VIEW the contact sheet / report picks, choose yourself

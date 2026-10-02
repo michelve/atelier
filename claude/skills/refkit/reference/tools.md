@@ -1,8 +1,10 @@
 # Installed tools (checked 2026-10-02) — use directly when simpler than refkit
 
-Needs Windows 11 + an NVIDIA GPU with 16 GB (reference build: RTX 4080 SUPER, 64 GB RAM). Shims in `~\.local\bin`.
-Versions below are the reference build's; `REQUIREMENTS.md` in the repo lists what this machine actually has.
-From Git Bash, `.cmd` shims need the extension (`blender.cmd`); pwsh/cmd/Python resolve them normally.
+Full set: Windows 11 + an NVIDIA GPU with 16 GB (reference build: RTX 4080 SUPER, 64 GB RAM). macOS (Apple
+Silicon) runs the CPU/Metal part (analyze, vectorize, render, inspect, qa, Google models; optional experimental
+engine for SAM/BiRefNet/depth/FILM) - `refkit status` lists it. Shims in `~/.local/bin`.
+Versions below are the reference build's; `REQUIREMENTS.md` (Windows) / `REQUIREMENTS-macos.md` list what a machine
+actually has. From Git Bash, `.cmd` shims need the extension (`blender.cmd`); pwsh/cmd/Python resolve them normally.
 
 ## Brains
 | Tool | Use |
@@ -38,11 +40,12 @@ inspect), `gltfpack`, `ktx`/`toktx`, `f3d` (thumbnails; not meshopt), trimesh/op
 GSAP skills for code-side motion.
 
 ## Setup, update, verify
-`<repo>\setup\shared\visual-tools.ps1`, `local-ai.ps1 [-SkipModels]` (everything it fetches is listed in `lib.ps1`:
-`$ComfyTemplates` (their embedded models), `$ComfyExtraModels`, `$ComfySkipModels`, `$RefkitHfModels` (critic and
-scorer snapshots), `$RefkitHfCache` (DINOv2, PickScore, CLIP processor), `$RefkitPackages`, `$HpsCommit`,
-`$TorchBackend`), `check.ps1` (checks all of it; `-Deep` adds refkit round trips + smoke).
-`update.ps1` runs weekly (Task Scheduler `\Atelier\`, Sundays 12:30): Atelier's scoop/npm/uv tools, refkit venv on
+`<repo>\setup\shared\visual-tools.ps1`, `local-ai.ps1 [-SkipModels] [-WithEngine]` (everything it fetches is listed per
+OS in `setup\atelier.jsonc`: `comfyTemplates` (their embedded models), `comfyPick` (single files, macOS engine),
+`comfyExtraModels`, `comfySkipModels`, `refkitHfModels` (critic and scorer snapshots), `refkitHfCache` (DINOv2,
+PickScore, CLIP processor), `refkitPackages`, `hps`, `torchBackend`), `check.ps1` (checks all of it; `-Deep` adds
+refkit round trips + smoke). OS specifics live in `setup\windows\` and `setup\macos\` (`platform.ps1`, shims, scheduler).
+`update.ps1` runs weekly (Windows: Task Scheduler `\Atelier\`; macOS: launchd; Sundays 12:30): Atelier's scoop/npm/uv tools, refkit venv on
 cu130, then ComfyUI latest stable + Desktop version sync, then `refkit smoke` over both (it restarts our server onto
 the new version when no jobs run). If one scoop app fails, it retries and reports what is still behind. The winget
 prerequisites (Blender, FFmpeg, ...) need elevation, so it only reports them. `update.ps1 -Check` lists what is

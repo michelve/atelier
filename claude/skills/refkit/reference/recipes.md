@@ -80,12 +80,13 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
 
 ## Restyle to a given palette (only when asked)
 - Raster: `refkit gen "recolor to <palette from the prompt/reference>, keep everything else" -i in.png`, or
-  deterministic: `magick in.png ( palette.png ) -remap out.png` / `-modulate` / `-level`.
+  deterministic: `magick in.png ( palette.png ) -remap out.png` / `-modulate` / `-level` (in bash/zsh escape the
+  parentheses: `\( palette.png \)`).
 - SVG: replace fill hexes directly (text edit), then qa with `--tokens`.
 
 ## Textures / tiles
 - `refkit gen "seamless tileable brushed satin black metal texture, top-down, even lighting" --size 1024x1024`;
-  check tiling: `magick tex.png ( +clone ) +append ( +clone ) -append tile-check.png`; fix seams with offset +
+  check tiling: `magick tex.png ( +clone ) +append ( +clone ) -append tile-check.png` (bash/zsh: `\(` `\)`); fix seams with offset +
   clone (`magick tex.png -roll +512+512 rolled.png`) and re-generate/inpaint the seam area.
 
 ## Local video clip (free, Wan 2.2)
@@ -131,7 +132,8 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
 - Is anything out of date? `<repo>\setup\update.ps1 -Check` lists what is behind and installs nothing.
 - "workflow patch ... matched 0 node(s)" = a template changed shape; re-export, then fix the patch in refkit.
 - Two ComfyUIs on one GPU: refkit reuses whatever of ours runs on 8188-8195 (incl. Comfy Desktop); close extras.
-- Slow after an update: `refkit bench`, compare with the numbers in `~\.local\bin\comfy.cmd`'s comment.
+- Slow after an update: `refkit bench`, compare with the numbers in `setup\windows\comfy.cmd`'s comment (its flags
+  go there; re-run setup step 5 to rewrite the shim).
 - Nano Banana / Omni / Veo says "paid call not run": it needs `--yes` after you have shown the cost estimate.
 - Reinstall / verify everything: `<repo>\setup\shared\visual-tools.ps1`, `local-ai.ps1` (ComfyUI models, critic/
   scorer weights, the DINOv2/PickScore cache, the HPSv3++ env), `check.ps1 -Deep`.

@@ -81,9 +81,19 @@ refkit qa cup3d/pixal3d-8/model.glb                                             
 
 ## Requirements
 
-- **Windows 11 + an NVIDIA GPU with 16 GB** (built and tested on an RTX 4080 SUPER). The local models use
-  CUDA-only kernels; macOS isn't supported today.
-- About 130 GB for models; Blender 5.2, ffmpeg and ComfyUI (portable). Full list with versions: `REQUIREMENTS.md`.
+- **Windows 11 + an NVIDIA GPU with 16 GB** for everything (built and tested on an RTX 4080 SUPER). The local
+  image, 3D, upscale and video models use CUDA-only kernels. About 130 GB for models; Blender 5.2, ffmpeg and ComfyUI
+  (portable). Full list with versions: `REQUIREMENTS.md`.
+- **macOS on Apple Silicon** runs the part that needs no CUDA. A Mac has no NVIDIA GPU, so the local models stay on
+  the PC; `refkit status` lists what runs, and anything else stops at once and names the alternative.
+
+  | On a Mac | How |
+  |---|---|
+  | analyze, vectorize, qa, runs, status | as on Windows (rembg, tesseract, vtracer, svgo, resvg) |
+  | render, inspect | Blender Cycles on Metal |
+  | cutout | rembg; SAM 3.1 / BiRefNet with the optional local engine (experimental, ComfyUI on Metal) |
+  | images and video | Google (Nano Banana, Gemini Omni, Veo): paid, cost shown first, needs `--yes` |
+  | to3d, upscale, fix, critique, bench, local gen/video models | the Windows NVIDIA PC |
 - **Claude Code** (needs a Claude plan or API access). Optional: a Google Gemini API key for paid cloud images
   and video.
 - **Model licences:** Qwen-Image 2.1 is non-commercial and Krea 2 is free under $1M revenue. For commercial work,
@@ -98,10 +108,10 @@ refkit qa cup3d/pixal3d-8/model.glb                                             
 | `studio/tokens*.json` | QA budgets (style-neutral) and project design tokens |
 | `nanobanana.py` | Google Gemini API client: Nano Banana images, Gemini Omni / Veo video, cost guard + spend log |
 | `claude/skills/` | Claude Code skills: `refkit` (how Claude drives Atelier), `motion` |
-| `Setup.cmd` | Double-click installer: opens the setup screen (`setup/install.ps1`) |
-| `setup/` | Setup screen (`install.ps1`), the weekly `update.ps1`, `check.ps1`; `shared/` (installers, model fetcher, workflow exporter), `windows/` (shims, scheduler) |
-| `requirements.txt` / `requirements-lock.txt` | Python deps (CUDA torch index) / exact installed versions |
-| `REQUIREMENTS.md` | Platform, tools + versions, ComfyUI + torch, every model file (generated weekly) |
+| `Setup.cmd` / `Setup.command` | Double-click installer for Windows / macOS: opens the setup screen (`setup/install.ps1`) |
+| `setup/` | Setup screen (`install.ps1`), the weekly `update.ps1`, `check.ps1`, `lib.ps1`, `atelier.jsonc` (what gets installed, per OS); `shared/` (installers, model fetcher, workflow exporter), `windows/` and `macos/` (`platform.ps1`, shims, scheduler) |
+| `requirements.txt` / `requirements-lock.txt` | Python deps (CUDA torch index) / exact installed versions; `requirements-macos*.txt` on a Mac |
+| `REQUIREMENTS.md` | Platform, tools + versions, ComfyUI + torch, every model file (generated weekly); `REQUIREMENTS-macos.md` on a Mac |
 
 ## Install
 
@@ -146,6 +156,18 @@ Every status is read from the machine, so you can close the screen, come back la
 installs: `.\Setup.cmd -All -Engine D:\AtelierEngine` (add `-SkipModels` to download the models later), or
 `.\Setup.cmd -Step 6` to run a single step.
 
+**On a Mac** (Apple Silicon, in a native Terminal; clone outside `~/Documents` and `~/Desktop`):
+
+```bash
+git clone https://github.com/michelve/atelier.git ~/atelier
+cd ~/atelier && ./Setup.command      # or double-click Setup.command in Finder
+```
+
+`Setup.command` installs Homebrew and PowerShell 7 if needed, then opens the same setup screen. The steps are the
+same, the Mac way round: Homebrew packages, the engine folder at `~/AtelierEngine` (the refkit venv; the local engine
+is optional and step 5 asks), settings in `~/.config/atelier/env`, the Gemini key in the login Keychain, and a
+launchd job for the weekly update. Step 10 (bench) doesn't apply on a Mac.
+
 <details>
 <summary>Manual install (what the setup screen does)</summary>
 
@@ -171,7 +193,7 @@ claude mcp add --scope user blender -- blender-mcp
 refkit status; refkit smoke          # in a new terminal
 ```
 
-Weekly updates: `setup\windows\schedule.ps1` from an elevated shell (or step 9). It schedules `setup\update.ps1`
+Weekly updates: `setup\windows\schedule.ps1` from an elevated shell (or step 9; on a Mac `setup/macos/schedule.ps1`). It schedules `setup\update.ps1`
 (Sundays 12:30, unelevated), which updates Atelier's scoop/npm/uv tools, refkit's Python packages and ComfyUI (latest
 stable), runs `refkit smoke` over both, and refreshes `REQUIREMENTS.md`; winget prerequisites that are behind are
 reported. Run `setup\update.ps1 -Check` to see what is behind without installing anything, and `setup\check.ps1`
