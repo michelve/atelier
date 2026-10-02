@@ -57,6 +57,9 @@ $ComfyExtraModels  = @(Select-ForOS $Manifest.comfyExtraModels)
 $ComfySkipModels   = @(Select-ForOS $Manifest.comfySkipModels)
 # fetch-comfy-models.py arguments for both the installer (local-ai) and the check, so the check can't drift from it.
 $ComfyModelArgs = @($ComfyExtraModels | ForEach-Object { '--extra'; $_ }) + @($ComfySkipModels | ForEach-Object { '--skip'; $_ })
+# Single files from templates the engine can't run whole (template:file); used only when the engine is installed.
+$ComfyPick      = @(Select-ForOS $Manifest.comfyPick)
+$ComfyPickArgs  = @($ComfyPick | ForEach-Object { '--pick'; $_ })
 # folder=repo; the folder (under <engine>\models) uses this OS's path separator.
 $RefkitHfModels = @(Select-ForOS $Manifest.refkitHfModels | ForEach-Object {
     $dir, $repo = $_ -split '=', 2; "$($dir -replace '/', [IO.Path]::DirectorySeparatorChar)=$repo" })

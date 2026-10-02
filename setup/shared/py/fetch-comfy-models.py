@@ -6,6 +6,7 @@ templates instead of a hand-kept list that would drift. Usage:
   --extra DIR=URL   additional files (e.g. upscale_models=https://.../4x-UltraSharp.safetensors)
   --dry-run         list what would be downloaded
   --skip NAME       a model file a template lists but refkit doesn't use (repeatable)
+  --pick T:NAME     just one file a template lists (repeatable; for an engine that can't run the whole template)
 """
 from __future__ import annotations
 
@@ -24,9 +25,21 @@ ap.add_argument("--dest", required=True)
 ap.add_argument("--extra", action="append", default=[])
 ap.add_argument("--dry-run", action="store_true")
 ap.add_argument("--skip", action="append", default=[])
+ap.add_argument("--pick", action="append", default=[])
 a = ap.parse_args()
 
-tpl_dir = next(Path(a.comfy).glob("python_embeded/Lib/site-packages/comfyui_workflow_templates_json/templates"))
+# ComfyUI's bundled templates package: in the portable build's embedded Python (Windows) or the engine venv (macOS).
+TEMPLATE_GLOBS = ("python_embeded/Lib/site-packages/comfyui_workflow_templates_json/templates",
+                  "venv/lib/python3*/site-packages/comfyui_workflow_templates_json/templates")
+
+
+def templates_dir(comfy: str) -> Path | None:
+    return next((hit for g in TEMPLATE_GLOBS for hit in Path(comfy).glob(g)), None)
+
+
+tpl_dir = templates_dir(a.comfy)
+if (a.templates or a.pick) and tpl_dir is None:
+    sys.exit(f"ComfyUI's templates package not found under {a.comfy} (install the engine first)")
 dest = Path(a.dest)
 
 
@@ -50,6 +63,13 @@ for t in a.templates:
     for directory, name, url in models_in(json.loads(f.read_text(encoding="utf-8"))):
         if name not in a.skip:
             wanted[dest / directory / name] = url
+for pick in a.pick:
+    t, file = pick.split(":", 1)
+    hits = [(d, n, u) for d, n, u in models_in(json.loads((tpl_dir / f"{t}.json").read_text(encoding="utf-8"))) if n == file]
+    if not hits:
+        sys.exit(f"{file} is not listed in template {t}")
+    directory, name, url = hits[0]
+    wanted[dest / directory / name] = url
 for e in a.extra:
     directory, url = e.split("=", 1)
     wanted[dest / directory / url.rsplit("/", 1)[-1].split("?")[0]] = url

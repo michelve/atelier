@@ -6,7 +6,8 @@ $ShimDir       = Join-Path $HOME '.local\bin'
 $UserEnvKey    = 'HKCU:\Environment'
 $MachineEnvKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
 # The workflow exporter drives the real ComfyUI frontend with Playwright from the system Python (its user site).
-$ExporterPython = 'python'
+function Get-ExporterPython { 'python' }
+$SkillLinkType = 'Junction'
 # What the checks import to prove the venvs work, and how torch reports the GPU.
 $VenvImports   = 'torch, cv2, vtracer, trimesh, spandrel, bitsandbytes, peft, editscore'
 $TorchGpuProbe = 'torch.cuda.is_available()'

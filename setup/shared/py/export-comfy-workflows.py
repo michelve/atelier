@@ -20,7 +20,18 @@ ap.add_argument("--out", required=True)
 ap.add_argument("--url", default="http://127.0.0.1:8188")
 a = ap.parse_args()
 
-tpl_dir = next(Path(a.comfy).glob("python_embeded/Lib/site-packages/comfyui_workflow_templates_json/templates"))
+# ComfyUI's bundled templates package: in the portable build's embedded Python (Windows) or the engine venv (macOS).
+TEMPLATE_GLOBS = ("python_embeded/Lib/site-packages/comfyui_workflow_templates_json/templates",
+                  "venv/lib/python3*/site-packages/comfyui_workflow_templates_json/templates")
+
+
+def templates_dir(comfy: str) -> Path | None:
+    return next((hit for g in TEMPLATE_GLOBS for hit in Path(comfy).glob(g)), None)
+
+
+tpl_dir = templates_dir(a.comfy)
+if tpl_dir is None:
+    raise SystemExit(f"ComfyUI's templates package not found under {a.comfy}")
 out = Path(a.out)
 out.mkdir(parents=True, exist_ok=True)
 

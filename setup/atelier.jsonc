@@ -23,10 +23,20 @@
       "image_ming_image_01_design_t2i"
     ]
   },
-  // Extra model files: folder=url.
+  // macOS's optional engine (Metal) runs no template whole: just these files (template:file), the fp16/bf16 ones refkit
+  // uses for cutouts (SAM 3.1, BiRefNet), depth (Depth Anything 3) and frame interpolation (FILM).
+  "comfyPick": {
+    "macos": [
+      "utility_image_segment_sam3:sam3.1_multiplex_fp16.safetensors",
+      "utility_birefnet_remove_background:birefnet.safetensors",
+      "utility_depth_anything3_image_depth_estimation:depth_anything_3_mono_large.safetensors",
+      "utility_video_frame_interpolation:film_net_fp16.safetensors"
+    ]
+  },
+  // Extra model files: folder=url. 4x-UltraSharp is also refkit's own upscaler (vectorize's pre-upscale, spandrel).
   "comfyExtraModels": {
+    "all": ["upscale_models=https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors"],
     "windows": [
-      "upscale_models=https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors",
       // MoGe 3 for the field-of-view estimate inside to3d's Pixal3D graph (measured better than the template's MoGe 2)
       "geometry_estimation=https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_3_vitg_fp16.safetensors",
       // Qwen-Image 2.1 LoRAs: AnyAngle (Apache-2.0; to3d --refine-views), Consistency (qwen-research; gen --consistent, fix)
@@ -59,13 +69,11 @@
   // refkit venv, direct dependencies only. transformers: DINOv2 fidelity, PickScore fallback, Qwen3-VL;
   // bitsandbytes/accelerate/peft/editscore: the 4-bit Qwen3-VL critic and EditScore (vlm.py; editscore brings
   // qwen-vl-utils). spandrel: vectorize's pre-upscale. open3d: not imported by refkit, kept for ad-hoc mesh work in
-  // sessions (tools.md). google-genai < 3: 3.0 drops video params. playwright (macOS): the workflow exporter runs
-  // in this venv there (Windows uses the system Python's).
+  // sessions (tools.md). google-genai < 3: 3.0 drops video params.
   "refkitPackages": {
     "all": ["opencv-python-headless", "scikit-image", "vtracer", "trimesh", "pygltflib", "spandrel", "pillow",
             "numpy", "scipy", "requests", "open3d", "google-genai<3", "transformers"],
-    "windows": ["bitsandbytes", "accelerate", "peft", "editscore"],
-    "macos": ["playwright"]
+    "windows": ["bitsandbytes", "accelerate", "peft", "editscore"]
   },
   // torch build for every torch install (refkit venv and, on Windows, ComfyUI's embedded Python). PyPI's Windows
   // torch is CPU-only, so any uv/pip call there that may touch torch names this backend (the 4080 SUPER driver 616.x

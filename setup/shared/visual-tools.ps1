@@ -5,7 +5,7 @@
 #   `blender` shim in ~/.local/bin (the installed Blender) - refkit needs it on PATH
 #   Blender: official Blender Lab MCP add-on (headless install) + the blender-mcp server as a uv tool; rembg (uv tool)
 #   (No Ollama model: the Claude session is the vision model; `refkit analyze --describe gemini|ollama` is opt-in.)
-. "$PSScriptRoot\..\lib.ps1"
+. "$PSScriptRoot/../lib.ps1"
 Start-PhaseLog 'visual-tools'
 Update-SessionPath
 $tmp = [IO.Path]::GetTempPath()
@@ -14,8 +14,8 @@ Write-Step 'Backup (packages, npm globals, uv tools, Blender user prefs)'
 $dest = Join-Path $BackupRoot "$(Get-Date -Format 'yyyyMMdd-HHmmss')-visual"
 New-Item -ItemType Directory $dest | Out-Null
 Backup-VisualState $dest
-npm ls -g --depth=0 --json 2>$null | Set-Content "$dest\npm-globals.json"
-uv tool list 2>$null | Set-Content "$dest\uv-tools.txt"
+npm ls -g --depth=0 --json 2>$null | Set-Content "$dest/npm-globals.json"
+uv tool list 2>$null | Set-Content "$dest/uv-tools.txt"
 Write-Ok $dest
 
 Write-Step $VisualToolsHeader
@@ -52,7 +52,7 @@ uv tool install --upgrade 'rembg[cpu,cli]' --python 3.12
 Write-Ok "rembg -> $((Get-Command rembg -ErrorAction Ignore).Source)"
 
 Write-Step 'Connect Blender MCP to Claude Code (user scope)'
-$claudeCfg = try { Get-Content "$HOME\.claude.json" -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable } catch { @{} }
+$claudeCfg = try { Get-Content "$HOME/.claude.json" -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable } catch { @{} }
 if ($claudeCfg.mcpServers?.blender) { Write-Skip 'already connected' }
 elseif (-not (Get-Command claude -ErrorAction Ignore)) {
     Write-Skip 'Claude Code not installed yet - the setup screen (step 6) connects it later'

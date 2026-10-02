@@ -1,7 +1,7 @@
 # Atelier's check: tools, engine, models, workflows, Blender MCP, the weekly task. Read-only apart from a temp folder.
 #   -Deep  also runs refkit round trips (analyze, vectorize, render, qa) and `refkit smoke` (~4 min).
 param([switch]$Deep)
-. "$PSScriptRoot\lib.ps1"
+. "$PSScriptRoot/lib.ps1"
 $ErrorActionPreference = 'Continue'
 Update-SessionPath
 $results = [Collections.Generic.List[object]]::new()
@@ -30,41 +30,42 @@ if ((Test-Path $comfyPy) -or $EngineRequired) {
     $ct = (Test-Path $comfyPy) ? (& $comfyPy -s -c "import torch; print(torch.__version__, $TorchGpuProbe)" 2>&1 | Out-String).Trim() : 'not installed'
     Check 'visual' 'ComfyUI torch sees the GPU' ($ct -match 'True$') $ct
 }
-$rkPy = Get-VenvPython "$StudioRoot\venvs\refkit"
+$rkPy = Get-VenvPython "$StudioRoot/venvs/refkit"
 $rt = (Test-Path $rkPy) ? (& $rkPy -c "import $VenvImports; print(torch.__version__, $TorchGpuProbe)" 2>&1 | Out-String).Trim() : 'not installed'
 Check 'visual' 'refkit venv imports + GPU' ($rt -match 'True$') $rt
 # Local critic / scorers (vlm.py, score.py): Hugging Face snapshots + the HPSv3++ runner's own env.
 foreach ($pair in $RefkitHfModels) {
     $dir = ($pair -split '=', 2)[0]
-    $ok = (Test-Path "$StudioRoot\models\$dir\config.json") -or (Test-Path "$StudioRoot\models\$dir\adapter_config.json")
+    $ok = (Test-Path "$StudioRoot/models/$dir/config.json") -or (Test-Path "$StudioRoot/models/$dir/adapter_config.json")
     Check 'visual' "weights models\$dir" $ok 'run setup step 5 (shared\local-ai.ps1)'
 }
 foreach ($pair in $RefkitHfCache) {
     $repo = ($pair -split '=', 2)[0]
-    $ok = Test-Path "$StudioRoot\models\scoring\models--$($repo -replace '/', '--')\snapshots\*\config.json"
+    $ok = Test-Path "$StudioRoot/models/scoring/models--$($repo -replace '/', '--')/snapshots/*/config.json"
     Check 'visual' "weights $repo (HF cache)" $ok 'run setup step 5 (else downloaded on first use)'
 }
 if ($HpsEnabled) {
-    Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path (Get-VenvBin "$StudioRoot\tools\hpsv3-4bit\.venv" 'hpsv3pp-score')) 'run setup step 5 (refkit falls back to PickScore)'
+    Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path (Get-VenvBin "$StudioRoot/tools/hpsv3-4bit/.venv" 'hpsv3pp-score')) 'run setup step 5 (refkit falls back to PickScore)'
 }
 Remove-Item Env:PYTHONNOUSERSITE
 foreach ($t in $ComfyTemplates) {
-    Check 'visual' "workflow $t" (Test-Path "$StudioCode\workflows\$t.api.json") 'run setup step 5'
+    Check 'visual' "workflow $t" (Test-Path "$StudioCode/workflows/$t.api.json") 'run setup step 5'
 }
-if ((Test-Path $rkPy) -and $ComfyTemplates) {
+$pickArgs = (Test-Path $comfyPy) ? $ComfyPickArgs : @()
+if ((Test-Path $rkPy) -and ($ComfyTemplates -or $pickArgs)) {
     # Same model list the installer downloads (read from the templates), so the check can't drift from it.
     $env:PYTHONNOUSERSITE = '1'
-    $want = & $rkPy "$PyDir\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @ComfyModelArgs |
+    $want = & $rkPy "$PyDir/fetch-comfy-models.py" --comfy "$StudioRoot/ComfyUI" --dest "$StudioRoot/models" --dry-run @ComfyTemplates @ComfyModelArgs @pickArgs |
         Select-String '^\s+(\S+)\s+<-' | ForEach-Object { $_.Matches[0].Groups[1].Value }
     Remove-Item Env:PYTHONNOUSERSITE
-    $missing = @($want | Where-Object { -not (Test-Path "$StudioRoot\models\$_") })
+    $missing = @($want | Where-Object { -not (Test-Path "$StudioRoot/models/$_") })
     Check 'visual' "models present ($($want.Count))" ($want.Count -gt 0 -and $missing.Count -eq 0) ($missing -join ', ')
 }
 
 # --- Blender MCP + Claude Code ---
 $bl = blender -b --python-expr "import bpy; p=bpy.context.preferences; print('MCPCHECK', any(a.module.endswith('.mcp') for a in p.addons), p.system.use_online_access)" 2>&1 | Select-String 'MCPCHECK'
 Check 'visual' 'Blender MCP add-on enabled + online access' ("$bl" -match 'MCPCHECK True True') "$bl"
-Check 'visual' 'refkit skill installed' (Test-Path "$ClaudeDir\skills\refkit\SKILL.md")
+Check 'visual' 'refkit skill installed' (Test-Path "$ClaudeDir/skills/refkit/SKILL.md")
 $mcp = (Get-Command claude -ErrorAction Ignore) ? (claude mcp list 2>&1 | Out-String) : ''
 Check 'visual' 'Blender MCP connected to Claude' ($mcp -match 'blender.*Connected') 'manual: claude mcp add --scope user blender -- blender-mcp'
 

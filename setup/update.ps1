@@ -12,7 +12,7 @@ elevation, so this only reports the ones that are behind.
           refreshed). The report goes to logs\last-check-atelier.txt; a real run writes logs\last-update-atelier.txt.
 #>
 param([switch]$Check)
-. "$PSScriptRoot\lib.ps1"
+. "$PSScriptRoot/lib.ps1"
 $ErrorActionPreference = 'Continue'   # one failing updater must not stop the rest
 if (-not $Check -and (Test-Admin)) { throw 'Run this unelevated (packages and the venv must not be installed as admin).' }
 # One run at a time: a hand run must not overlap the scheduled one (both would update the same venv and ComfyUI).
@@ -31,8 +31,8 @@ function Invoke-UpdateStep([string]$Name, [scriptblock]$Action) {
 }
 
 $NpmTools = 'svgo', '@gltf-transform/cli', 'gltfpack'
-$VenvPy = Get-VenvPython "$StudioRoot\venvs\refkit"
-$ComfyGit = "$StudioRoot\ComfyUI\ComfyUI"
+$VenvPy = Get-VenvPython "$StudioRoot/venvs/refkit"
+$ComfyGit = "$StudioRoot/ComfyUI/ComfyUI"
 
 try {
     # Reported in both modes: these need elevation, which a weekly user task doesn't have.
@@ -55,7 +55,7 @@ try {
         Invoke-UpdateStep 'npm (svgo, glTF tools)' {
             npm outdated -g --depth=0 | Select-String -Pattern ('^(' + (($NpmTools | ForEach-Object { [regex]::Escape($_) }) -join '|') + ') ') | Out-Host
         }
-        if (Test-Path "$ComfyGit\.git") {
+        if (Test-Path "$ComfyGit/.git") {
             Invoke-UpdateStep 'ComfyUI (latest stable tag)' {
                 git -C $ComfyGit fetch --tags --quiet   # refs only; the working tree is not touched
                 $tag = git -C $ComfyGit tag --list 'v*' --sort=-v:refname | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Select-Object -First 1
@@ -85,7 +85,7 @@ try {
                 uv pip install --python $VenvPy @TorchArgs --upgrade torch torchvision $RefkitPackages
             }
         }
-        if (Test-Path "$StudioRoot\ComfyUI\ComfyUI\main.py") {
+        if (Test-Path "$StudioRoot/ComfyUI/ComfyUI/main.py") {
             Invoke-UpdateStep 'ComfyUI (latest stable)' { [void](Update-Engine) }
             # Safety net: restart our server if it still runs the old version (smoke does it when idle), re-export
             # workflows if the bundled templates changed, validate them against the new node definitions, and run
@@ -100,7 +100,7 @@ try {
         # Keep the repo's requirements.txt / requirements-lock.txt / REQUIREMENTS.md matching what is now installed
         # (the changes show up in `git status` for review + commit).
         Invoke-UpdateStep 'requirements manifest (repo)' {
-            & $ExporterPython "$PyDir\export-requirements.py" --repo $AtelierRoot | Out-Host
+            & (Get-ExporterPython) "$PyDir/export-requirements.py" --repo $AtelierRoot | Out-Host
         }
     }
 } finally { $lock.ReleaseMutex() }

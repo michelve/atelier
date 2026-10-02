@@ -12,14 +12,14 @@ come back later: finished steps show [done], and "run all remaining" skips them.
   -SkipModels  install everything except the model downloads (run step 5 again later to fetch them)
 #>
 param([switch]$Status, [switch]$All, [int]$Step, [string]$Engine, [switch]$SkipModels)
-. "$PSScriptRoot\lib.ps1"   # $AtelierRoot, $StudioRoot, package lists, Write-* helpers
+. "$PSScriptRoot/lib.ps1"   # $AtelierRoot, $StudioRoot, package lists, Write-* helpers
 $ErrorActionPreference = 'Continue'   # a failed probe must not end the setup screen
 
 # --- probes (the OS-specific ones and the $Prereqs table come from setup\<os>\platform.ps1) ----------------------
 function Get-SavedEngine { Get-UserEnv 'ATELIER_ENGINE' }
 function Get-ClaudeConfig {
     # ~\.claude.json holds user-scope MCP servers and the login state (read directly: `claude mcp list` is slow).
-    try { Get-Content "$HOME\.claude.json" -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable } catch { @{} }
+    try { Get-Content "$HOME/.claude.json" -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable } catch { @{} }
 }
 function Test-BlenderMcp { [bool](Get-ClaudeConfig).mcpServers?.blender }
 function Test-ClaudeSignedIn {
@@ -80,27 +80,34 @@ $Steps = @(
            $missing = @($VisualTools | Where-Object { -not (Test-Cmd $_) })
            if ($missing) { @{ State = 'todo'; Note = "missing: $($missing -join ', ')" } } else { @{ State = 'done'; Note = 'all on PATH' } }
        }
-       Run = { Invoke-Phase 'shared\visual-tools.ps1' } }
+       Run = { Invoke-Phase 'shared/visual-tools.ps1' } }
     @{ Key = 'ai'; Title = 'Local AI stack'; Detail = 'shared\local-ai.ps1: ComfyUI, models (~130 GB, resumable), venv, workflows, refkit + comfy commands, Claude skills'
        Check = {
            $eng = (Get-SavedEngine) ?? $StudioRoot
-           $parts = [ordered]@{
-               ComfyUI = Test-Path "$eng\ComfyUI\ComfyUI\main.py"
-               venv    = Test-Path (Get-VenvPython "$eng\venvs\refkit")
-               refkit  = Test-Path (Get-ShimPath 'refkit')
-               workflows = (@(Get-ChildItem "$AtelierRoot\studio\workflows" -Filter *.api.json -ErrorAction Ignore).Count -ge $ComfyTemplates.Count)
-           }
-           $models = @(Get-ChildItem "$eng\models" -Recurse -File -Include *.safetensors, *.pth -ErrorAction Ignore).Count
+           $parts = [ordered]@{}
+           # The local engine is required on Windows, optional on a Mac (see the run below).
+           if ($EngineRequired) { $parts.ComfyUI = Test-Path "$eng/ComfyUI/ComfyUI/main.py" }
+           $parts.venv      = Test-Path (Get-VenvPython "$eng/venvs/refkit")
+           $parts.refkit    = Test-Path (Get-ShimPath 'refkit')
+           $parts.workflows = (@(Get-ChildItem "$AtelierRoot/studio/workflows" -Filter *.api.json -ErrorAction Ignore).Count -ge $ComfyTemplates.Count)
+           $models = @(Get-ChildItem "$eng/models" -Recurse -File -Include *.safetensors, *.pth -ErrorAction Ignore).Count
            $missing = @($parts.Keys | Where-Object { -not $parts[$_] })
            if ($missing.Count -eq $parts.Count) { return @{ State = 'todo'; Note = 'not installed' } }
            if ($missing -or $models -lt $MinModelFiles) { return @{ State = 'partial'; Note = "missing: $((@($missing) + $(if ($models -lt $MinModelFiles) { "models ($models files)" })) -join ', ')" } }
            @{ State = 'done'; Note = "$models model files in $eng" }
        }
-       Run = { Invoke-Phase 'shared\local-ai.ps1' $(if ($SkipModels) { '-SkipModels' }) } }
+       Run = {
+           $extra = @(if ($SkipModels) { '-SkipModels' })
+           if (-not $EngineRequired -and -not (Test-Path "$StudioRoot/ComfyUI/ComfyUI/main.py") -and -not $All -and
+               (Read-Host '  Also install the optional local engine (experimental: ComfyUI on Metal with SAM 3.1, BiRefNet, Depth Anything 3, FILM; ~10 GB)? [y/N]') -match '^[Yy]') {
+               $extra += '-WithEngine'
+           }
+           Invoke-Phase 'shared/local-ai.ps1' $extra
+       } }
     @{ Key = 'claude'; Title = 'Claude Code + skills'; Detail = 'installs Claude Code, links the skills into ~\.claude\skills, connects Blender MCP'
        Check = {
-           $skills = @(Get-ChildItem "$AtelierRoot\claude\skills" -Directory | Where-Object { Test-Path "$($_.FullName)\SKILL.md" })
-           $linked = @($skills | Where-Object { (Get-Item "$ClaudeDir\skills\$($_.Name)" -ErrorAction Ignore).LinkType })
+           $skills = @(Get-ChildItem "$AtelierRoot/claude/skills" -Directory | Where-Object { Test-Path "$($_.FullName)/SKILL.md" })
+           $linked = @($skills | Where-Object { (Get-Item "$ClaudeDir/skills/$($_.Name)" -ErrorAction Ignore).LinkType })
            $mcp = Test-BlenderMcp
            $note = "skills $($linked.Count)/$($skills.Count), Blender MCP $(if ($mcp) { 'connected' } else { 'not connected' })"
            if (-not (Test-Cmd claude)) { return @{ State = 'todo'; Note = "Claude Code not installed; $note" } }
@@ -115,7 +122,7 @@ $Steps = @(
                if (Test-Cmd claude) { Write-Ok "Claude Code $(claude --version)" }
                else { Write-Warn2 'Claude Code not installed - see https://claude.com/claude-code, then run this step again' }
            }
-           & "$SharedDir\link-skills.ps1"
+           & "$SharedDir/link-skills.ps1"
            # Blender MCP lets Claude drive a running Blender; 08 installs the add-on + the blender-mcp server.
            if ((Test-Cmd claude) -and (Test-Cmd blender-mcp) -and -not (Test-BlenderMcp)) {
                claude mcp add --scope user blender -- blender-mcp
@@ -128,7 +135,7 @@ $Steps = @(
        } }
     @{ Key = 'verify'; Title = 'Verify'; Detail = 'refkit status + refkit smoke (tiny end-to-end generation and cutout)'
        Check = {
-           $s = Get-Item "$AtelierRoot\scratch\smoke\smoke.png" -ErrorAction Ignore
+           $s = Get-Item "$AtelierRoot/scratch/smoke/smoke.png" -ErrorAction Ignore
            if ($s) { @{ State = 'done'; Note = "last smoke test $($s.LastWriteTime.ToString('yyyy-MM-dd HH:mm'))" } }
            else { @{ State = 'todo'; Note = 'not run yet' } }
        }
@@ -159,13 +166,13 @@ $Steps = @(
        Run = { Register-ScheduledUpdate } }
     @{ Key = 'bench'; Title = 'Tune speed for this GPU'; Detail = "optional: refkit bench (~15 min), then copy the winning flags into setup\$OsKey\$(Split-Path (Get-ShimPath 'comfy') -Leaf) and re-run step 5"; Optional = $true
        Check = {
-           $r = Get-Item "$AtelierRoot\scratch\bench\results.json" -ErrorAction Ignore
+           $r = Get-Item "$AtelierRoot/scratch/bench/results.json" -ErrorAction Ignore
            if ($r) { @{ State = 'done'; Note = "results $($r.LastWriteTime.ToString('yyyy-MM-dd'))" } } else { @{ State = 'todo'; Note = 'not run' } }
        }
        Run = { & (Get-ShimPath 'refkit') bench } }
 )
 
-function Invoke-Phase([string]$Script, [string]$Extra) {
+function Invoke-Phase([string]$Script, [string[]]$Extra) {
     # Each phase runs in its own pwsh so it gets a fresh lib.ps1 (with the chosen ATELIER_ENGINE) and its own log.
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot $Script))
     if ($Extra) { $argList += $Extra }

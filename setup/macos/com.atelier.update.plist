@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Atelier's weekly update (setup/update.ps1), Sundays 12:30. Rendered into ~/Library/LaunchAgents by
+     setup/macos/schedule.ps1. launchd gives jobs a minimal PATH, so it is set here. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.atelier.update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{PWSH}}</string>
+    <string>-NoProfile</string>
+    <string>-File</string>
+    <string>{{REPO}}/setup/update.ps1</string>
+  </array>
+  <key>WorkingDirectory</key><string>{{REPO}}/setup</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>{{HOME}}/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>ATELIER_ENGINE</key><string>{{ENGINE}}</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>0</integer>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key><string>{{REPO}}/setup/logs/launchd-update.log</string>
+  <key>StandardErrorPath</key><string>{{REPO}}/setup/logs/launchd-update.log</string>
+</dict>
+</plist>
