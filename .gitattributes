@@ -1,0 +1,7 @@
+# Line endings only where the OS insists; everything else is stored as committed (no repo-wide normalisation).
+# cmd.exe needs CRLF in batch files; macOS shells and launchd need LF in scripts and plists.
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+*.command text eol=lf
+*.sh      text eol=lf
+*.plist   text eol=lf
