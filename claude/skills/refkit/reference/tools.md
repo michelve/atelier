@@ -14,7 +14,7 @@ From Git Bash, `.cmd` shims need the extension (`blender.cmd`); pwsh/cmd/Python 
 ## Local generation engine
 | Tool | Where | Notes |
 |---|---|---|
-| ComfyUI 0.38 portable | `<engine>\ComfyUI`, `comfy` shim, http://127.0.0.1:8188 | torch 2.14.1+cu130; localhost only, `--disable-api-nodes`; speed flags from `refkit bench` (`--fast fp16_accumulation cublas_ops --high-ram --reserve-vram 1`); Comfy Kitchen INT8 attention is set per workflow by refkit (`ModelAttentionBackend` node; `REFKIT_ATTENTION="pytorch attention"` turns it off). refkit finds/starts it on 8188-8195 and shares Comfy Desktop's server |
+| ComfyUI 0.38.2 portable | `<engine>\ComfyUI`, `comfy` shim, http://127.0.0.1:8188 | torch 2.14.1+cu130; localhost only, `--disable-api-nodes`; speed flags from `refkit bench` (`--fast fp16_accumulation cublas_ops --high-ram --reserve-vram 1`); Comfy Kitchen INT8 attention is set per workflow by refkit (`ModelAttentionBackend` node; `REFKIT_ATTENTION="pytorch attention"` turns it off). refkit finds/starts it on 8188-8195 and shares Comfy Desktop's server |
 | Comfy Desktop | Start menu "Comfy Desktop" | UI only; tracks the same portable install ("AIStudio (portable)"). Don't use its Update button — `<repo>\setup\update-tools.ps1` updates + syncs the version |
 | Models | `<engine>\models` | images: Z-Image-Turbo, Qwen-Image 2.1 (+edit, RGBA, 9B prompt enhancers; LoRAs: AnyAngle, Consistency), Krea 2 Turbo (+style LoRA), FLUX.2 klein 4B, HiDream-O1 Dev, Ming-Image-0.1-Design (its 27B prompt rewriter is skipped) · albedo: Marigold V2 (Qwen-Image-Edit 2509 + LoRA) · upscale: SeedVR2 3B/7B, 4x-UltraSharp, RealESRGAN · segment: SAM 3.1, BiRefNet · depth/geometry: Depth Anything 3, MoGe 3 (to3d's field-of-view estimate; the template's MoGe 2 is also present) · 3D: Pixal3D (+multi-view), TRELLIS.2, Hunyuan3D 2.1 · video: Wan 2.2 TI2V 5B + I2V 14B (lightx2v 4-step LoRA), FILM · downloaded, not wired: TripoSplat, Qwen-Image-Layered (see below) · judging: Qwen3-VL-8B (`models\vlm`, 4-bit), EditScore LoRA, HPSv3++ NF4, PickScore + DINOv2-base (to3d fidelity; HF cache in `models\scoring`) |
 | API workflows | `<repo>\studio\workflows\*.api.json` | exported from the core templates (`.templates-version` stamp); `refkit smoke` re-exports + validates after updates |
@@ -106,9 +106,10 @@ fresh-session end-to-end run (C6), LTX-2.5 vs Wan (B11: gated, needs the user's 
 acceptance).
 
 ## Version check (2026-10-02, primary sources)
-ComfyUI v0.38.2 released 2026-10-02 (templates 0.11.74, partner-node additions, a Qwen int8/int4-cache crash
-fix); this machine still runs v0.38.0 (templates 0.11.70, comfy-kitchen 0.2.36) until the weekly update or
-`update-tools.ps1 -Part User` installs it and `refkit smoke` validates it · torch 2.14.1, transformers 5.18.0, bitsandbytes 0.50.2 =
+ComfyUI v0.38.2 = latest release (2026-10-02: templates 0.11.74, partner-node additions, a Qwen int8/int4-cache
+crash fix), installed 2026-10-02 with comfy-kitchen 0.2.36; `refkit smoke` passed (restart onto 0.38.2, 22
+workflows re-exported + validated, gen/cutout/to3d/render/critic). 0.11.74 only changed the Qwen 2.1 prompt
+enhancer's settings (thinking off, 4096 tokens, the template's system prompt), which matters for `--enhance` · torch 2.14.1, transformers 5.18.0, bitsandbytes 0.50.2 =
 latest on PyPI · hpsv3-4bit a4c8dc5 = repo head · Qwen3-VL-8B-Instruct, AnyAngle LoRA, Consistency LoRA (updated
 2026-10-01), HPSv3++ NF4 = current on Hugging Face · ComfyUI issue #16027 still open (refkit's per-workflow
 attention, see above) · ComfyUI-Trellis2 last commit 2026-09-25, still no torch 2.14 wheels · LTX-2.5 still gated.

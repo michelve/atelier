@@ -17,7 +17,7 @@ installing or updating anything (`python setup\templates\export-requirements.py`
 - System Python 3.14 libs (docs skills, workflow exporter): `python-docx`, `python-pptx`, `openpyxl`, `pypdf`, `pdfplumber`, `pymupdf`, `reportlab`, `playwright`, `google-genai<3`.
 
 ## ComfyUI (engine)
-- ComfyUI **v0.38.0** portable in `<engine>\ComfyUI` - embedded torch 2.14.1+cu130 python 3.13.14.
+- ComfyUI **v0.38.2** portable in `<engine>\ComfyUI` - embedded torch 2.14.1+cu130 python 3.13.14.
 - Launch flags (from `refkit bench`): see `setup/templates/comfy.cmd`. Model folders: `setup/templates/extra_model_paths.yaml`.
 - Key packages in the embedded Python:
   - `comfy-aimdo==0.5.5`
@@ -25,12 +25,12 @@ installing or updating anything (`python setup\templates\export-requirements.py`
   - `comfy-kitchen==0.2.36`
   - `comfyui-embedded-docs==0.5.12`
   - `comfyui_frontend_package==1.53.6`
-  - `comfyui_workflow_templates==0.11.70`
-  - `comfyui-workflow-templates-core==0.3.361`
-  - `comfyui-workflow-templates-json==0.1.96`
+  - `comfyui_workflow_templates==0.11.74`
+  - `comfyui-workflow-templates-core==0.3.365`
+  - `comfyui-workflow-templates-json==0.1.100`
   - `comfyui-workflow-templates-media-api==0.3.84`
   - `comfyui-workflow-templates-media-assets-01==0.1.48`
-  - `comfyui-workflow-templates-media-assets-02==0.1.6`
+  - `comfyui-workflow-templates-media-assets-02==0.1.8`
   - `comfyui-workflow-templates-media-image==0.3.160`
   - `comfyui-workflow-templates-media-other==0.3.229`
   - `comfyui-workflow-templates-media-video==0.3.101`

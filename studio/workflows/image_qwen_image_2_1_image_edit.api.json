@@ -114,7 +114,7 @@
   },
   "459:458": {
     "inputs": {
-      "seed": 1095460012924539,
+      "seed": 891836227295375,
       "steps": 25,
       "cfg": 1,
       "sampler_name": "euler",
@@ -237,7 +237,7 @@
   },
   "459:484": {
     "inputs": {
-      "switch": true,
+      "switch": false,
       "on_false": "Replace costumes for the character",
       "on_true": [
         "459:500",
@@ -265,31 +265,20 @@
       "title": "Batch Images"
     }
   },
-  "459:495": {
-    "inputs": {
-      "prompt": "",
-      "negative_prompt": "",
-      "resolution": 1024
-    },
-    "class_type": "TextEncodeQwenImage21",
-    "_meta": {
-      "title": "Text Encode Qwen Image 2.1"
-    }
-  },
   "459:500": {
     "inputs": {
       "prompt": "Replace costumes for the character",
-      "max_length": 16256,
+      "max_length": 4096,
       "sampling_mode": "on",
       "sampling_mode.temperature": 1,
       "sampling_mode.top_k": 20,
       "sampling_mode.top_p": 0.95,
-      "sampling_mode.min_p": 0.05,
-      "sampling_mode.repetition_penalty": 1.05,
-      "sampling_mode.seed": 1095460012924539,
+      "sampling_mode.min_p": 0,
+      "sampling_mode.repetition_penalty": 1,
+      "sampling_mode.seed": 891836227295375,
       "sampling_mode.presence_penalty": 0,
-      "thinking": true,
-      "use_default_template": false,
+      "thinking": false,
+      "use_default_template": true,
       "mtp": "auto",
       "clip": [
         "459:477",
@@ -297,6 +286,10 @@
       ],
       "image": [
         "459:485",
+        0
+      ],
+      "system_prompt": [
+        "459:479",
         0
       ]
     },
