@@ -6,12 +6,13 @@
                          its torch, Blender, every model file (size, folder), Claude skills
 
 Usage (system Python): python setup\\shared\\py\\export-requirements.py [--repo <atelier clone>]
-Lists come from setup\\lib.ps1 (single source of truth), versions are probed live.
+Lists come from setup\\atelier.jsonc (single source of truth), versions are probed live.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import platform
 import re
@@ -64,21 +65,24 @@ def first_version(text: str) -> str:
     return m.group(0) if m else (text.splitlines()[0][:40] if text else "not found")
 
 
-def ps_list(name: str) -> list[str]:
-    """Pull a `$Name = @(...)` string array out of lib.ps1."""
-    text = (SETUP / "lib.ps1").read_text(encoding="utf-8")
-    m = re.search(rf"\${name}\s*=\s*@\((.*?)\)\s*(?:#.*)?$", text, re.S | re.M)
-    return re.findall(r"'([^']+)'", m.group(1)) if m else []
+# Install data: setup/atelier.jsonc (full-line // comments), resolved for this OS like lib.ps1 does.
+MANIFEST = json.loads(re.sub(r"(?m)^\s*//.*$", "", (SETUP / "atelier.jsonc").read_text(encoding="utf-8")))
+OS_KEY = "windows" if os.name == "nt" else "macos"
 
 
-def ps_value(name: str) -> str:
-    m = re.search(rf"\${name}\s*=\s*'([^']*)'", (SETUP / "lib.ps1").read_text(encoding="utf-8"))
-    return m.group(1) if m else ""
+def for_os(key: str):
+    """A manifest entry for this OS: list entries are "all" + this OS's part; {windows, macos} values pick one."""
+    entry = MANIFEST.get(key)
+    if not isinstance(entry, dict):
+        return entry
+    if "all" in entry:
+        return list(entry["all"]) + list(entry.get(OS_KEY) or [])
+    return entry.get(OS_KEY)
 
 
 # --- Python: requirements.txt + lock ---------------------------------------------------------------------
-backend = ps_value("TorchBackend") or "cu130"
-refkit_pkgs = ps_list("RefkitPackages")
+backend = for_os("torchBackend") or ""
+refkit_pkgs = for_os("refkitPackages") or []
 freeze = sh(str(VENV_PY), "-m", "pip", "freeze") if VENV_PY.exists() else ""
 if not freeze or "No module named pip" in freeze:
     freeze = sh("uv", "pip", "freeze", "--python", str(VENV_PY))
@@ -129,7 +133,7 @@ for cmd, args, src in TOOLS:
     where = shutil.which(cmd) or shutil.which(cmd + ".cmd")
     ver = first_version(sh(where, *args)) if where else "MISSING"
     if cmd == "blender-mcp" and where:   # no --version flag; the pinned release lives in lib.ps1
-        ver = ps_value("BlenderMcpVersion") or "installed"
+        ver = for_os("blenderMcpVersion") or "installed"
     tool_rows.append(f"| `{cmd}` | {ver} | {src} |")
 
 gpu = sh("nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader")
@@ -178,15 +182,15 @@ installing or updating anything (`python setup\\shared\\py\\export-requirements.
 - Key packages in the embedded Python:
 {chr(10).join(f"  - `{ln}`" for ln in comfy_key)}
 - Core templates driven by refkit (models are downloaded from their embedded lists by `setup/shared/local-ai.ps1`):
-{chr(10).join(f"  - `{t}`" for t in ps_list("ComfyTemplates"))}
+{chr(10).join(f"  - `{t}`" for t in for_os("comfyTemplates") or [])}
 
 ## CLI tools
 | Tool | Version | Install source |
 |---|---|---|
 {chr(10).join(tool_rows)}
 
-Prerequisites (winget, the setup screen's step 2): {", ".join(f"`{p}`" for p in ps_list("AtelierWinget"))}.
-Scoop (visual): {", ".join(f"`{p}`" for p in ps_list("VisualScoop"))}.
+Prerequisites (winget, the setup screen's step 2): {", ".join(f"`{p}`" for p in for_os("atelierWinget") or [])}.
+Scoop (visual): {", ".join(f"`{p}`" for p in for_os("visualScoop") or [])}.
 
 ## Models (`<engine>\\models`, {len(model_rows)} files, {total / 1e9:.1f} GB)
 | Folder | File | Size |

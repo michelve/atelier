@@ -61,6 +61,11 @@ installing or updating anything (`python setup\shared\py\export-requirements.py`
   - `utility_seedvr2_3b_int8_upscale_video`
   - `utility_video_frame_interpolation`
   - `3d_pixal3d_multi_views`
+  - `image_hidream_o1_dev`
+  - `image_marigold_v2_albedo_estimation`
+  - `video_wan2_2_5B_ti2v`
+  - `video_wan2_2_14B_i2v`
+  - `image_ming_image_01_design_t2i`
 
 ## CLI tools
 | Tool | Version | Install source |

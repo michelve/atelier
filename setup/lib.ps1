@@ -27,69 +27,33 @@ $UserEnvKey    = 'HKCU:\Environment'
 $MachineEnvKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
 $ClaudeDir     = Join-Path $HOME '.claude'
 
-# winget apps Atelier needs (the setup screen's prerequisites). They are machine-wide installs, so updating them needs
-# elevation: winget (or another updater) does that; update.ps1 only reports the ones that are behind.
-$AtelierWinget = @('Git.Git', 'astral-sh.uv', 'Python.Python.3.13', 'OpenJS.NodeJS.LTS', '7zip.7zip',
-                   'BlenderFoundation.Blender', 'Gyan.FFmpeg', 'ImageMagick.ImageMagick', 'OliverBetz.ExifTool',
-                   'Shssoichiro.Oxipng', 'UB-Mannheim.TesseractOCR')
-# Visual tools (08): portable CLIs from scoop (extras holds inkscape + f3d), plus KTX-Software for `to3d --ktx2`.
-$VisualScoop = @('potrace', 'resvg', 'pngquant', 'libwebp', 'libavif', 'inkscape', 'f3d')
-$BlenderMcpVersion = '1.0.3'
-# ComfyUI core templates refkit drives; their embedded model lists decide what 09 downloads.
-$ComfyTemplates = @(
-    'image_z_image_turbo_int8', 'image_flux2_klein_image_edit_4b_distilled', 'utility_image_segment_sam3',
-    'utility_depth_anything3_image_depth_estimation', 'utility-gan_upscaler',
-    '3d_pixal3d_trellis2_image_to_model', '3d_hunyuan3d-v2.1',
-    # added 2026-09-30 (audit): best open image/edit models, SeedVR2 upscaling, multi-view 3D, video finishing
-    'image_qwen_image_2_1_t2i', 'image_qwen_image_2_1_image_edit', 'image_qwen_image_2_1_background_removal',
-    'image_krea2_turbo_t2i_int8', 'image_krea2_turbo_int8_image_style_reference',
-    'utility_seedvr2_3b_int8_upscale_image', 'utility_seedvr2_7b_int8_upscale_image',
-    'utility_seedvr2_3b_int8_upscale_video', 'utility_video_frame_interpolation', '3d_pixal3d_multi_views',
-    # added 2026-10-01 (upgrade): HiDream-O1 Dev (MIT photoreal + edit), Marigold V2 albedo (to3d --delight)
-    'image_hidream_o1_dev', 'image_marigold_v2_albedo_estimation',
-    # local video (refkit video -m wan / wan-fast; Apache-2.0)
-    'video_wan2_2_5B_ti2v', 'video_wan2_2_14B_i2v',
-    # Ming design model (posters, UI); its 27B prompt rewriter is not used
-    'image_ming_image_01_design_t2i'
-)
-$ComfyExtraModels = @(
-    'upscale_models=https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors',
-    # MoGe 3 for the field-of-view estimate inside to3d's Pixal3D graph (measured better than the template's MoGe 2)
-    'geometry_estimation=https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_3_vitg_fp16.safetensors',
-    # Qwen-Image 2.1 LoRAs: AnyAngle (Apache-2.0; to3d --refine-views), Consistency (qwen-research; gen --consistent, fix)
-    'loras=https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors',
-    'loras=https://huggingface.co/ausboss/Qwen-Image-2.1-Consistency-LoRA/resolve/main/qwen-image-2.1-consistency.safetensors'
-)
-# Files a template lists that refkit never loads: Ming's 27B prompt rewriter (gen -m ming uses the prompt as written).
-$ComfySkipModels = @('qwen3.8_27b_w4a8.safetensors')
-# fetch-comfy-models.py arguments for both the installer (09) and the check (90), so the check can't drift from it.
+# Install data per OS lives in atelier.jsonc (lists are {all, windows, macos}); the variables below are this OS's
+# resolved values, so the scripts read them as before.
+$OsKey = $IsWindows ? 'windows' : 'macos'
+$Manifest = Get-Content (Join-Path $Root 'atelier.jsonc') -Raw | ConvertFrom-Json -AsHashtable
+function Select-ForOS($Entry) {
+    # Emits "all" then this OS's part; nothing for an OS the entry doesn't list (so @(...) is empty, not @($null)).
+    if ($Entry -isnot [Collections.IDictionary]) { return $Entry }
+    if ($Entry.Contains('all')) { $Entry['all'] }
+    if ($null -ne $Entry[$OsKey]) { $Entry[$OsKey] }
+}
+$AtelierWinget     = @(Select-ForOS $Manifest.atelierWinget)
+$VisualScoop       = @(Select-ForOS $Manifest.visualScoop)
+$BlenderMcpVersion = $Manifest.blenderMcpVersion
+$ComfyTemplates    = @(Select-ForOS $Manifest.comfyTemplates)
+$ComfyExtraModels  = @(Select-ForOS $Manifest.comfyExtraModels)
+$ComfySkipModels   = @(Select-ForOS $Manifest.comfySkipModels)
+# fetch-comfy-models.py arguments for both the installer (local-ai) and the check, so the check can't drift from it.
 $ComfyModelArgs = @($ComfyExtraModels | ForEach-Object { '--extra'; $_ }) + @($ComfySkipModels | ForEach-Object { '--skip'; $_ })
-# Hugging Face snapshots for refkit's own Python (not ComfyUI): local critic + edit scorer (vlm.py), HPSv3++ (score.py).
-$RefkitHfModels = @(
-    'vlm\Qwen3-VL-8B-Instruct=Qwen/Qwen3-VL-8B-Instruct',
-    'scoring\EditScore-Qwen3-VL-8B-Instruct=EditScore/EditScore-Qwen3-VL-8B-Instruct',
-    'scoring\HPSv3-PlusPlus-bnb-NF4=stella221125/HPSv3-PlusPlus-bnb-NF4'
-)
-# Hugging Face cache entries refkit loads with from_pretrained(cache_dir=<engine>\models\scoring): DINOv2 for to3d's
-# fidelity score, PickScore + its CLIP processor for ranking when HPSv3++ is missing. 'repo=files' (only what loads).
-$RefkitHfCache = @(
-    'facebook/dinov2-base=config.json,preprocessor_config.json,model.safetensors',
-    'yuvalkirstain/PickScore_v1=config.json,model.safetensors',
-    'laion/CLIP-ViT-H-14-laion2B-s32B-b79K=*.json,*.txt'
-)
-# HPSv3++ runner (MIT) in its own uv env under <engine>\tools: it pins transformers <5.18, refkit's venv is newer.
-$HpsRepo = 'https://github.com/Stella2211/hpsv3-4bit'
-$HpsCommit = 'a4c8dc5'
-# Direct dependencies only. transformers: DINOv2 fidelity, PickScore fallback, Qwen3-VL; bitsandbytes/accelerate/peft/
-# editscore: the 4-bit Qwen3-VL critic and EditScore (vlm.py; editscore brings qwen-vl-utils). spandrel: vectorize's
-# pre-upscale. open3d: not imported by refkit, kept for ad-hoc mesh work in sessions (tools.md). Weights live in
-# <engine>\models\scoring and \vlm.
-$RefkitPackages = @('opencv-python-headless', 'scikit-image', 'vtracer', 'trimesh', 'pygltflib', 'spandrel', 'pillow',
-                    'numpy', 'scipy', 'requests', 'open3d', 'google-genai<3', 'transformers',   # genai 3.0 drops video params
-                    'bitsandbytes', 'accelerate', 'peft', 'editscore')
-# CUDA build for every torch install (refkit venv and ComfyUI's embedded Python). PyPI's Windows torch is CPU-only,
-# so any uv/pip call that may touch torch must name this backend. The 4080 SUPER driver (616.x) supports cu130.
-$TorchBackend = 'cu130'
+# folder=repo; the folder (under <engine>\models) uses this OS's path separator.
+$RefkitHfModels = @(Select-ForOS $Manifest.refkitHfModels | ForEach-Object {
+    $dir, $repo = $_ -split '=', 2; "$($dir -replace '/', [IO.Path]::DirectorySeparatorChar)=$repo" })
+$RefkitHfCache  = @(Select-ForOS $Manifest.refkitHfCache)
+$HpsRepo        = $Manifest.hps.repo
+$HpsCommit      = $Manifest.hps.commit
+$HpsEnabled     = $Manifest.hps.os -contains $OsKey
+$RefkitPackages = @(Select-ForOS $Manifest.refkitPackages)
+$TorchBackend   = Select-ForOS $Manifest.torchBackend   # '' = PyPI's default wheels
 
 function Write-Step([string]$Msg) { Write-Host "==> $Msg" -ForegroundColor Cyan }
 function Write-Ok([string]$Msg)   { Write-Host "    ok  $Msg" -ForegroundColor Green }
