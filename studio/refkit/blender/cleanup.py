@@ -4,10 +4,12 @@
   --tris               target triangle count (decimate only if above; default 60000)
   --smooth-angle       auto-smooth angle in degrees (default 40)
   --material           keep | orbitra-metal | orbitra-glass   (replace materials with the house look)
+  --no-level           keep the orientation as generated (default: stand the model on its base, see level())
 
 Steps: join -> weld (merge by distance) -> drop loose geometry -> fill small holes -> decimate -> smooth by angle +
-weighted normals -> centre with base at z=0, 1 m largest side -> apply transforms -> export glb.
-With --keep-shading (textured meshes decimated before baking): no hole fill, decimate or re-shading.
+weighted normals -> level on its base -> centre with base at z=0, 1 m largest side -> apply transforms -> export glb.
+With --keep-shading (textured meshes decimated before baking): no hole fill, decimate or re-shading (the
+mesh keeps the normals it was baked with).
 """
 import argparse
 import sys
@@ -26,6 +28,7 @@ ap.add_argument("--material", default="keep", choices=["keep", "orbitra-metal", 
 ap.add_argument("--keep-shading", action="store_true",
                 help="textured mesh already at budget: no decimate/hole fill/re-shading (keeps UVs and the baked "
                      "tangent-space normal map valid; faces are shaded fully smooth, as the bake assumed)")
+ap.add_argument("--no-level", dest="level", action="store_false")
 a = ap.parse_args(argv)
 
 
@@ -105,8 +108,10 @@ bm.to_mesh(obj.data)
 bm.free()
 
 if a.keep_shading:
-    # The texture/normal/AO bakes were made on this exact mesh with fully smooth normals.
-    bpy.ops.object.shade_smooth()
+    # The texture/normal/AO bakes were made on this exact mesh with the normals the graph exported (fully smooth,
+    # or split at creases with to3d --hard-edges): keep those; only meshes without their own normals get smoothed.
+    if not obj.data.has_custom_normals:
+        bpy.ops.object.shade_smooth()
 else:
     tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
     if tris > a.tris:
@@ -119,6 +124,50 @@ else:
     wn = obj.modifiers.new("weighted_normals", "WEIGHTED_NORMAL")
     wn.keep_sharp = True
     bpy.ops.object.modifier_apply(modifier=wn.name)
+
+def level(obj, max_tilt=40.0, min_share=0.03):
+    """Stand the model on its base. Pixal3D builds the mesh in the photo's camera frame, so an object shot from a
+    little above comes out leaning back by the camera's elevation (a turntable then wobbles). The base is the
+    largest flat facet of the convex hull facing down (within max_tilt of -Z, at least min_share of the hull's
+    area); it is rotated to face exactly down. Round-bottomed objects have no such facet and are left as they are.
+    Returns the correction in degrees (0 = untouched)."""
+    import math
+    hull = bmesh.new()
+    for v in obj.data.vertices:
+        hull.verts.new(v.co)
+    res = bmesh.ops.convex_hull(hull, input=hull.verts)
+    junk = {g for g in (*res["geom_interior"], *res["geom_unused"]) if isinstance(g, bmesh.types.BMVert)}
+    bmesh.ops.delete(hull, geom=list(junk), context="VERTS")
+    hull.normal_update()
+    total = sum(f.calc_area() for f in hull.faces) or 1.0
+    clusters = []   # [summed area-weighted normal, area]
+    for f in hull.faces:
+        n = f.normal
+        if n.z > -math.cos(math.radians(max_tilt)):
+            continue
+        area = f.calc_area()
+        for c in clusters:
+            if c[0].normalized().angle(n, 1.0) < math.radians(3):
+                c[0] += n * area
+                c[1] += area
+                break
+        else:
+            clusters.append([n.copy() * area, area])
+    hull.free()
+    best = max(clusters, key=lambda c: c[1], default=None)
+    if not best or best[1] < min_share * total:
+        return 0.0
+    down = best[0].normalized()
+    tilt = math.degrees(down.angle(Vector((0, 0, -1))))
+    if tilt < 1.0:
+        return 0.0
+    rot = down.rotation_difference(Vector((0, 0, -1))).to_matrix().to_4x4()
+    obj.data.transform(rot)
+    obj.data.update()
+    return tilt
+
+
+tilt = level(obj) if a.level else 0.0
 
 # Base at z=0, centred, largest side 1 m.
 lo = Vector([min(v.co[i] for v in obj.data.vertices) for i in range(3)])
@@ -134,4 +183,5 @@ if a.material != "keep":
 
 bpy.ops.export_scene.gltf(filepath=a.output, export_format="GLB", use_selection=False, export_apply=True)
 after = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-print(f"CLEANUP-DONE faces_in={before} tris_out={after} islands_removed={len(tiny) if small else 0}")
+print(f"CLEANUP-DONE faces_in={before} tris_out={after} islands_removed={len(tiny) if small else 0} "
+      f"levelled={tilt:.1f}deg")

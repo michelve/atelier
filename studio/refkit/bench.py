@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image
 
 from . import comfy, gen, to3d
-from .common import SCRATCH, STUDIO_ROOT, log
+from .common import SCRATCH, STUDIO_ROOT, log, say
 
 DEFAULT_SETS = [
     ("baseline", ""),
@@ -129,7 +129,7 @@ def bench_set(label: str, flags: str, full: bool, cutout: Path | None) -> dict:
             res["klein_s"], _ = run_job(k, dest, "klein-7")
             res["zimage_after_switch_s"], _ = run_job(z(105), dest, "zimage-105")
             if full and cutout:
-                wf = to3d.build("pixal3d", comfy.upload(cutout), 1234, texture=2048, upsample=1024, tris=60000,
+                wf = to3d.build("pixal3d", comfy.upload(cutout), 1234, texture=2048, tris=60000,
                                 prefix=f"refkit/bench-{label}", use_alpha=True)
                 t = time.time()
                 comfy.queue(wf, timeout=3600)
@@ -143,7 +143,10 @@ def bench_set(label: str, flags: str, full: bool, cutout: Path | None) -> dict:
     return res
 
 
-def main(args) -> None:
+def main(args) -> dict | None:
+    if args.golden:
+        from . import golden
+        return golden.run(args)
     sets = [tuple(s.split("=", 1)) for s in args.set] if args.set else DEFAULT_SETS
     if sets[0][0] != "baseline":
         sets = [("baseline", ""), *sets]
@@ -161,10 +164,10 @@ def main(args) -> None:
         (OUT / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     stop_ours()
     cols = ["startup_s", "zimage_cold_s", "zimage_warm_s", "klein_s", "zimage_after_switch_s", "pixal3d_s", "peak_vram_mb"]
-    print("\n" + f"{'set':10s} " + " ".join(f"{c.removesuffix('_s'):>14s}" for c in cols) + "   drift(z/klein)")
+    say("\n" + f"{'set':10s} " + " ".join(f"{c.removesuffix('_s'):>14s}" for c in cols) + "   drift(z/klein)")
     for r in results:
         cells = " ".join(f"{r.get(c, '-')!s:>14s}" for c in cols)
         d = r.get("drift_vs_baseline") or {}
-        print(f"{r['label']:10s} {cells}   {d.get('zimage-101', '-')}/{d.get('klein-7', '-')}" +
+        say(f"{r['label']:10s} {cells}   {d.get('zimage-101', '-')}/{d.get('klein-7', '-')}" +
               ("" if r.get("ok") else f"   FAILED: {r.get('error', '')[:80]}"))
     log(f"results: {OUT / 'results.json'}")

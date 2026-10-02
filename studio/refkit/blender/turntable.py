@@ -8,6 +8,7 @@
   --look       orbitra | neutral     (lighting + world preset; neutral = AgX base contrast + studio HDRI reflections)
   --as-is      for .blend input: render the file's own camera/animation/colour management instead of a turntable
   --transparent  transparent background (RGBA frames)
+  --ground     a shadow-catcher floor under the model (contact shadow; stays invisible, also with --transparent)
 """
 import argparse
 import math
@@ -27,6 +28,7 @@ ap.add_argument("--samples", type=int, default=None)
 ap.add_argument("--look", default="neutral", choices=["orbitra", "neutral"])
 ap.add_argument("--as-is", action="store_true")
 ap.add_argument("--transparent", action="store_true")
+ap.add_argument("--ground", action="store_true")
 a = ap.parse_args(argv)
 
 
@@ -49,10 +51,13 @@ def use_gpu(scene):
                 for d in prefs.devices:
                     d.use = d.type == backend
                 scene.cycles.device = "GPU"
+                # OptiX denoiser on RTX (fast, GPU); OpenImageDenoise otherwise.
+                scene.cycles.denoiser = "OPTIX" if backend == "OPTIX" else "OPENIMAGEDENOISE"
                 print(f"TURNTABLE device {backend}: {[d.name for d in gpus]}")
                 return
         except TypeError:
             continue
+    scene.cycles.denoiser = "OPENIMAGEDENOISE"
     print("TURNTABLE device CPU (no OptiX/CUDA device found)")
 
 
@@ -115,8 +120,11 @@ def normalise(objs):
     root.scale = [1 / size] * 3
     root.location = -Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, lo.z)) / size
     for o in meshes:
-        for poly in o.data.polygons:
-            poly.use_smooth = True
+        # Models that carry their own normals (glTF always does: smooth, or split at creases) are shown as made;
+        # only normal-less imports (some OBJ/FBX) get smooth shading instead of faceted.
+        if not o.data.has_custom_normals:
+            for poly in o.data.polygons:
+                poly.use_smooth = True
     extent = (hi - lo) / size
     return extent.length / 2, extent.z / 2  # bounding-sphere radius, centre height
 
@@ -168,6 +176,15 @@ def studio(scene, look):
         area_light("rim", (0.0, 2.4, 1.6), (-60, 0, 0), 1.5, 0.3, 250, "#ffffff")
 
 
+def ground(scene, radius):
+    """Invisible floor that only catches shadows (Cycles shadow catcher), at the model's base (z = 0)."""
+    bpy.ops.mesh.primitive_plane_add(size=max(8.0, radius * 16), location=(0, 0, 0))
+    plane = bpy.context.active_object
+    plane.name = "refkit_ground"
+    plane.is_shadow_catcher = True
+    return plane
+
+
 def turntable_camera(scene, frames, radius=0.87, centre_z=0.5, fill=0.82):
     """Distance chosen so the bounding sphere fills `fill` of the frame from any turntable angle."""
     pivot = bpy.data.objects.new("turntable_pivot", None)
@@ -209,6 +226,8 @@ else:
     scene = bpy.context.scene
     radius, centre_z = normalise(import_model(a.input))
     studio(scene, a.look)
+    if a.ground:
+        ground(scene, radius)
     turntable_camera(scene, a.frames, radius, centre_z)
 
 use_gpu(scene)

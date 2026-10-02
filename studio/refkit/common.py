@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -95,8 +96,16 @@ def save_json(path: Path, data) -> Path:
     return path
 
 
+JSON_MODE = False   # --json: stdout carries only the result object (meta.emit); logs move to stderr
+
+
+def say(text: str = "") -> None:
+    """Human-readable report output (tables, listings); kept off stdout in --json mode."""
+    print(text, flush=True, file=sys.stderr if JSON_MODE else sys.stdout)
+
+
 def log(msg: str) -> None:
-    print(f"refkit: {msg}", flush=True)
+    say(f"refkit: {msg}")
 
 
 # --- colour -------------------------------------------------------------------------------------

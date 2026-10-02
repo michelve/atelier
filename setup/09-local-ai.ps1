@@ -66,7 +66,23 @@ else {
     $extra = $ComfyExtraModels | ForEach-Object { '--extra'; $_ }
     & $VenvPy "$Templates\fetch-comfy-models.py" --comfy $ComfyDir --dest "$StudioRoot\models" @ComfyTemplates @extra
     if ($LASTEXITCODE) { Write-Warn2 'some downloads failed; re-run this script to resume' }
+
+    Write-Step 'Critic / scorer weights (Hugging Face snapshots, resumable)'
+    foreach ($pair in $RefkitHfModels) {
+        $dir, $repo = $pair -split '=', 2
+        & $VenvPy -c "from huggingface_hub import snapshot_download as s; s(repo_id='$repo', local_dir=r'$StudioRoot\models\$dir', max_workers=8)"
+        if ($LASTEXITCODE) { Write-Warn2 "$repo failed; re-run to resume" } else { Write-Ok "$repo -> models\$dir" }
+    }
 }
+
+Write-Step 'HPSv3++ scorer env (own uv project, pinned commit)'
+$Hps = "$StudioRoot\tools\hpsv3-4bit"
+if (-not (Test-Path "$Hps\.git")) { git clone $HpsRepo $Hps }
+git -C $Hps fetch --quiet origin
+git -C $Hps checkout --quiet $HpsCommit
+Push-Location $Hps; uv sync; Pop-Location
+if (Test-Path "$Hps\.venv\Scripts\hpsv3pp-score.exe") { Write-Ok "hpsv3pp-score @ $HpsCommit" }
+else { Write-Warn2 'hpsv3pp-score missing; refkit falls back to PickScore' }
 
 Write-Step 'API-format workflows (via the ComfyUI frontend)'
 $up = { try { [bool](Invoke-RestMethod http://127.0.0.1:8188/system_stats -TimeoutSec 2) } catch { $false } }

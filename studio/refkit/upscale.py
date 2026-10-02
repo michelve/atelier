@@ -13,7 +13,7 @@ import math
 import random
 from pathlib import Path
 
-from . import comfy, gen, gpu
+from . import comfy, gen, gpu, meta
 from .common import RefkitError, log, open_image, out_dir
 
 WORKFLOW = {"3b": "utility_seedvr2_3b_int8_upscale_image", "7b": "utility_seedvr2_7b_int8_upscale_image"}
@@ -56,7 +56,7 @@ def upscale(src: Path, dest: Path, factor: float, model: str, seed: int) -> Path
     return comfy.fetch(items[0], dest)
 
 
-def main(args) -> Path:
+def main(args) -> dict:
     src = Path(args.image).resolve()
     dest = out_dir(src, args.out)
     w, h = open_image(src).size
@@ -76,5 +76,7 @@ def main(args) -> Path:
     out = upscale(cur, dest, factor, args.model, seed)
     final = out.replace(dest / f"{src.stem}-x{factor:.2g}-seedvr2{args.model}.png")
     fw, fh = open_image(final).size
+    meta.record(final, "upscale", model="seedvr2", variant=args.model, seed=seed, size=f"{fw}x{fh}",
+                refine=args.refine, denoise=args.denoise if args.refine else None, inputs=[src])
     log(f"{final} ({w}x{h} -> {fw}x{fh}, SeedVR2 {args.model})")
-    return final
+    return {"outputs": [str(final)], "seed": seed, "size": [fw, fh]}

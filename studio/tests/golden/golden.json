@@ -1,0 +1,21 @@
+{
+  "about": "Fixed-seed regression set for `refkit bench --golden --label NAME`: every pipeline change is compared against the previous label's contact sheets before it is kept. Inputs in inputs/ were made by refkit itself (prompts below) so the set can be rebuilt.",
+  "inputs": {
+    "mug": {"file": "inputs/mug.png", "made_with": "existing studio cutout (ceramic mug, stoneware base)"},
+    "camera": {"file": "inputs/camera.png", "made_with": "gen -m z-image --seed 2026 then cutout", "prompt": "studio product photo of a vintage 35mm film rangefinder camera, black leatherette body, brushed chrome top plate, knurled dials, three-quarter front view, centred on a plain light grey background, soft even light, no cast shadow"},
+    "fox": {"file": "inputs/fox.png", "made_with": "gen -m z-image --seed 2027 then cutout", "prompt": "a small handmade clay figurine of a sitting fox with a curled tail, matte terracotta glaze with white chest, front three-quarter view, centred on a plain light grey background, soft even light, no cast shadow"},
+    "teapot": {"file": "inputs/teapot.png", "made_with": "gen -m z-image --seed 2028 then cutout", "prompt": "a glossy cobalt blue ceramic teapot with a bamboo handle, front three-quarter view, centred on a plain light grey background, soft studio light with clear specular highlights, no cast shadow"}
+  },
+  "jobs": [
+    {"id": "z-poster", "kind": "gen", "model": "z-image", "seed": 101, "size": "1024x1280", "prompt": "minimal travel poster for a coastal town, a white lighthouse on dark rocks at dusk, flat graphic shapes, large bold headline text \"CAP BLANC\" at the top and small text \"since 1902\" below it, warm orange sky fading to deep navy"},
+    {"id": "qwen-poster", "kind": "gen", "model": "qwen", "seed": 101, "size": "1024x1280", "prompt": "minimal travel poster for a coastal town, a white lighthouse on dark rocks at dusk, flat graphic shapes, large bold headline text \"CAP BLANC\" at the top and small text \"since 1902\" below it, warm orange sky fading to deep navy"},
+    {"id": "krea-photo", "kind": "gen", "model": "krea", "seed": 202, "size": "1024x1024", "prompt": "a candid photograph of an elderly watchmaker at his cluttered workbench, loupe in one eye, holding a tiny brass gear with tweezers, warm tungsten desk lamp, shallow depth of field, 50mm lens, Kodak Portra colours"},
+    {"id": "qwen-edit", "kind": "edit", "model": "qwen-edit", "seed": 303, "input": "teapot", "prompt": "Change the teapot glaze to matte sage green and the handle to black leather. Keep everything else the same."},
+    {"id": "klein-edit", "kind": "edit", "model": "klein-edit", "seed": 303, "input": "teapot", "prompt": "Change the teapot glaze to matte sage green and the handle to black leather. Keep everything else the same."},
+    {"id": "3d-mug", "kind": "to3d", "input": "mug", "seed": 1234},
+    {"id": "3d-camera", "kind": "to3d", "input": "camera", "seed": 1234, "hard_edges": true},
+    {"id": "3d-fox", "kind": "to3d", "input": "fox", "seed": 1234},
+    {"id": "3d-teapot", "kind": "to3d", "input": "teapot", "seed": 1234},
+    {"id": "upscale-photo", "kind": "upscale", "from": "krea-photo", "seed": 7}
+  ]
+}

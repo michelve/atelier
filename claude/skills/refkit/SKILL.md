@@ -28,11 +28,14 @@ Paths below: `<repo>` = the Atelier clone, `<engine>` = `ATELIER_ENGINE` (ComfyU
 4. **Write the prompt for that model** (`refkit gen --recipe MODEL` prints its recipe; refkit also prints
    "prompt tip" warnings). Prompts containing `"` quotes → put them in a UTF-8 file and use `--prompt-file`
    (the .cmd shim re-splits quoted arguments).
-5. **Explore → pick → finish.** Drafts: `-n 4 --pick` (PickScore ranks them, writes `contact.png` best-first) →
-   VIEW the contact sheet, choose yourself (the score is a pre-sort, not the decision) → refine the prompt or fix
-   with an edit (`qwen-edit` / `klein-edit`) → `refkit upscale` for the final size.
+5. **Explore → pick → finish.** Drafts: `-n 4 --pick` (HPSv3++ ranks text→image, EditScore ranks edits against the
+   source, PickScore if those aren't installed; writes `contact.png` best-first) or `--auto` (adds the local critic,
+   a text check and a second round; writes `report.md`) → VIEW the contact sheet / report picks, choose yourself
+   (scores and critic are a pre-sort, not the decision) → fix what's wrong with an edit (`qwen-edit`, `--consistent`
+   to keep the frame) or a region fix (`refkit fix --region "hand"`) → `refkit upscale` for the final size.
 6. **QA.** `refkit qa <every deliverable> [--ref <reference>] [--tokens <project tokens.json>]`. Fix FAILs; fix
-   WARNs or say why not. Walk the matching checklist in `reference/checklists.md`.
+   WARNs or say why not. 3D: look at every `inspect/views.png` (textured row + clay row) — holes, lumps, melted or
+   lost edges, texture seams. Walk the matching checklist in `reference/checklists.md`.
 7. **Look again.** Side by side with the reference at 100% and at display size
    (`magick ref.png out.png +append cmp.png`, view it). Iterate until it holds up. Report paths, qa summary,
    seeds (every gen writes a `.json` sidecar), cost of any paid calls, and anything still imperfect.
@@ -49,31 +52,40 @@ Paths below: `<repo>` = the Atelier clone, `<engine>` = `ATELIER_ENGINE` (ComfyU
 | Cut out a subject | `cutout` (BiRefNet) · `--prompt "the cup"` (SAM 3.1, pick objects) · `--engine qwen` (hair, fur, glass) | — |
 | Bigger / sharper | `upscale` (SeedVR2 3B; `--model 7b` heroes; `--refine "prompt"` cleans generator artifacts first) | — (Google has no upscale API) |
 | Logo, icon, flat art, must scale | `cutout` → `vectorize` → hand-finish SVG | — |
-| 3D object for render / WebGL | `cutout` → `to3d` (Pixal3D) · `--views f,l,b,r` for turnarounds · `--ktx2` for GPU textures | — |
+| 3D object for render / WebGL | `cutout` → `to3d` (Pixal3D; levelled on its base; inspect sheet) · `--hard-edges` for hard-surface · `-n 3` / `--auto` to pick a seed · `--refine-views` for better backs/sides · `--delight` for glossy/lit photos · `--views f,l,b,r` for turnarounds · `--ktx2` for GPU textures | — |
 | Product 360° spin | `render model.glb` (Blender turntable: exact geometry) | — |
 | Video clip from a still / keyframes | make keyframes locally with `gen` | `video "motion" --from a.png [--to b.png] --yes` (Omni default; `-m veo-fast` for first+last/extension) |
 | Text-to-video | — | `video "…" --yes` (Omni 720p ≈ $0.10/s) |
 | Existing Blender scene | `render FILE.blend --as-is` (keeps its camera, frames, colour), or Blender MCP | — |
 
-Local model licences: Qwen-Image 2.1 is non-commercial (research licence), Krea 2 is free under $1M revenue — the
-user's work is personal, so both are fine; for client/commercial work use z-image, klein-edit, or Nano Banana.
+Local model licences (each output's `.json` sidecar names its model's licence): Qwen-Image 2.1 and its LoRAs are
+non-commercial (research licence), Krea 2 is free under $1M revenue, Hunyuan3D 2.1 excludes the EU/UK/South Korea —
+the user's work is personal and US-based, so all are fine; for client/commercial work use z-image, klein-edit,
+hidream (MIT), Pixal3D/TRELLIS.2 (MIT), or Nano Banana.
 
 ## Commands
 
 | Command | What it does | Key options |
 |---|---|---|
 | `refkit analyze IMG` | palette, edges, subject mask, depth, OCR, route hint, contact sheet | `--colors 8` `--fast` `--describe gemini` |
-| `refkit gen "PROMPT"` | local text→image (z-image default) | `-m z-image\|qwen\|krea` `--size 1344x768` `-n 4 --pick` `--seed` `--enhance` (template prompt enhancer) `--prompt-file` `--recipe MODEL` `--out DIR` |
-| `refkit gen "EDIT" -i a.png[,b.png]` | edit/composite from references (qwen-edit default) | `-m klein-edit` (fast) `--size` (else keeps ref size) |
+| `refkit gen "PROMPT"` | local text→image (z-image default) | `-m z-image\|qwen\|krea\|hidream` `--size 1344x768` `-n 4 --pick` `--auto [--rounds 2]` `--seed` `--enhance` (template prompt enhancer) `--prompt-file` `--recipe MODEL` `--out DIR` |
+| `refkit gen "EDIT" -i a.png[,b.png]` | edit/composite from references (qwen-edit default) | `--consistent` (edit stays on the source's frame; not for pose/move edits) `-m klein-edit` (fast) `-m hidream-edit` `-m krea-style -i style.png` (new content in that look) `--size` (else keeps ref size) |
+| `refkit fix IMG --region "hand" --prompt "…"` | redraw one region (SAM finds every instance), blend it back | `--mask FILE` `--engine qwen\|zimage` `--denoise` |
 | `refkit gen … -m banana[-pro] --yes` | Nano Banana 2 / Pro (cloud, paid) | `--size` → nearest aspect + 2K/4K |
 | `refkit upscale IMG` | SeedVR2 detail-restoring upscale (keeps alpha) | `--scale 2` `--long 4096` `--model 7b` `--refine "prompt" --denoise 0.3` |
 | `refkit cutout IMG` | RGBA subject, decontaminated edges | `--prompt "cube, sphere:2"` (SAM 3.1) `--engine qwen\|rembg` `--feather 0.8` |
 | `refkit vectorize IMG` | trace → exact-palette SVG, best of presets by SSIM | `--palette "#hex,…"` `--preset clean\|balanced\|detailed\|flat` `--mono` (auto light/dark ink) |
-| `refkit to3d IMG` | textured PBR GLB (Pixal3D) → cleanup → meshopt | `-m pixal3d\|trellis2\|hunyuan3d` `--views f,l,b,r` `--tris 60000` `--texture 2048` `--ktx2` `--seed` |
-| `refkit render FILE` | Cycles OptiX turntable/still → MP4 + WebM + AVIF/WebP | `--frames 96` (1 = still) `--res` `--samples` `--look neutral\|orbitra` `--transparent` `--av1` `--as-is` |
+| `refkit to3d IMG` | textured PBR GLB (Pixal3D) → cleanup (levels it on its base) → meshopt → inspect sheet; one folder per seed | `-m pixal3d\|trellis2\|hunyuan3d` `--quality standard\|high` `--hard-edges` `-n N` `--auto` `--refine-views` `--delight` `--views f,l,b,r` `--tris 60000` `--texture 2048` `--ktx2` `--no-level` `--seed` |
+| `refkit inspect MODEL.glb` | QA views: textured + clay rows from N angles → `views.png`, mesh facts → `stats.json` | `--views 8` `--res 640` |
+| `refkit critique A B …` | local VLM (Qwen3-VL-8B) ranks candidates pairwise, both orders | `--brief "…"` `--ref IMG` `--kind image\|3d` `--consistency` (front/left/back/right views agree?) |
+| `refkit runs` | recent runs from the index (model, seed, output); every output has a `.json` sidecar with licence + lineage | `--last 20` `--command to3d` |
+| `refkit render FILE` | Cycles OptiX turntable/still → MP4 + WebM + AVIF/WebP | `--frames 96` (1 = still) `--res` `--samples` `--look neutral\|orbitra` `--ground` (contact shadow) `--transparent` `--av1` `--as-is` |
 | `refkit video "MOTION" --yes` | Gemini Omni / Veo clip (paid) + optional local finish | `-m omni\|veo-fast\|veo\|veo-lite` `--from IMG` `--to IMG` `--ref IMG` `--seconds` `--aspect 9:16` `--continue ID` `--upscale` `--interp 2` · `--finish-only` on an existing clip |
 | `refkit qa FILES` | raster/svg/glb/video checks (metadata, halo, budgets, faststart, loop seam…) | `--ref IMG` `--tokens FILE` `--json` |
-| `refkit status` / `smoke` / `bench` | health · post-update test · speed-flag A/B | |
+| `refkit status` / `smoke` / `bench` | health · post-update test (incl. 3D, render, critic; `--quick` skips them) · speed-flag A/B | `bench --golden --label NAME [--compare OLD]` = the fixed-seed regression set |
+
+Every command takes `--json`: its result (paths, seeds, scores, warnings) as one JSON line on stdout, logs on
+stderr — parse that instead of reading log text.
 
 Direct Google access (more options): `python <repo>\nanobanana.py -h` (refs up to 14, `--ground`,
 `--thinking high`, Omni `--continue`/`--extend`, Veo `--ref`/`--negative`).

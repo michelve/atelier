@@ -33,14 +33,31 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
 7. Encode AVIF/WebP, `oxipng --strip safe` any PNG (removes the embedded prompt), qa.
 
 ## 3D object from a reference (for a render or WebGL)
-1. `refkit cutout ref.png [--prompt "the object"]`.
-2. `refkit to3d ref.refkit/cutout.png` (Pixal3D, textured; a cutout's alpha is used as the mask, so
-   `cutout --prompt "the left cup"` then to3d builds that cup). Shape-only / VRAM tight -> `-m hunyuan3d`.
-   More angles (a turnaround sheet cut into views, or renders)?
-   `refkit to3d --views front.png,left.png,back.png,right.png`.
-   Try 2-3 `--seed`s; pick the one whose silhouette matches best (compare thumbnails `model.png`).
-   Specular noise in the photo (water drops, glitter) bakes in as blotches: clean the image first
-   (`gen "remove the water droplets. Keep everything else the same." -i photo.png`).
+1. `refkit cutout ref.png [--prompt "the object"]`. No photo yet? Make one that reconstructs well (text-to-3D):
+   `refkit gen "<object>, three-quarter front view, centred on a plain light grey background, soft even light,
+   no cast shadow" -m z-image -n 4 --pick` → cutout. `refkit analyze` flags good inputs (`3d_candidate`).
+2. `refkit to3d ref.refkit/cutout.png -n 3` (Pixal3D, textured; a cutout's alpha is used as the mask, so
+   `cutout --prompt "the left cup"` then to3d builds that cup). Each seed gets its own folder with
+   `inspect/views.png` (textured row over clay row) and all of them go into `compare.png` — look at the clay row
+   for holes, lumps and melted edges, pick the seed. `--auto` lets the local critic pre-rank them (`report.md`).
+   - Boxy hard-surface objects (devices, furniture, buildings): `--hard-edges` gives crisp creases, but curved parts
+     (lens barrels, knobs) turn visibly faceted — compare with a default run (`-n` / two runs) before keeping it.
+   - `--quality high` (shape cascade 1536): a little more fine detail on detailed objects, lumpier smooth surfaces,
+     ~15% slower. Default `standard` is the better choice for smooth objects.
+   - Weak back/sides: `--refine-views` renders the first mesh on Pixal3D's multi-view rig, redraws each view in the
+     photo's look (Qwen + AnyAngle; a redraw whose silhouette doesn't match its render is retried, then replaced
+     by the render), and rebuilds with Pixal3D multi-view (~10 min). Both meshes land in `compare.png`; keep the
+     better one — on a simple symmetric object (a mug) the two came out comparable, so use it when the single-view
+     back/sides are actually wrong.
+   - Glossy or strongly lit photos: `--delight` (Marigold albedo) so highlights don't bake into the texture.
+     Specular noise (water drops, glitter) still needs an edit first (`gen "remove the water droplets. Keep
+     everything else the same." -i photo.png`).
+   - More angles you already have (a turnaround sheet cut into views, or renders):
+     `refkit to3d --views front.png,left.png,back.png,right.png`.
+   - Pixal3D builds the mesh in the photo's camera frame; cleanup stands it on its base (`levelled_deg` in
+     model.json). `--no-level` keeps the camera frame (e.g. to compare with the photo's framing).
+   - Shape-only / VRAM tight -> `-m hunyuan3d`. TRELLIS.2 (`-m trellis2`) occasionally returns a shredded mesh:
+     the clay row shows it at once, and qa FAILs it (non-manifold > 3%); rerun with another seed.
 3. Keep the generated PBR textures (default). Replace materials in Blender only to match the reference/prompt
    (`--material orbitra-*` exists for Orbitra work only).
 4. Fix in Blender if needed (bevel hard edges, separate parts, re-material): headless

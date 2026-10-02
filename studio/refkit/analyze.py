@@ -106,6 +106,20 @@ def depth_map(rgb: np.ndarray) -> np.ndarray | None:
         return None
 
 
+def object_on_plain(rgb: np.ndarray, mask: np.ndarray) -> bool:
+    """One dominant subject (its largest part >= 85% of the mask, covering 5-75% of the frame) on a near-uniform
+    background (outside the mask, per-channel std < 20): the kind of image to3d reconstructs well. A hint only."""
+    fg = mask > 128
+    cover = fg.mean()
+    if not 0.05 <= cover <= 0.75:
+        return False
+    n, _, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8))
+    if n < 2 or stats[1:, cv2.CC_STAT_AREA].max() < 0.85 * fg.sum():
+        return False
+    bg = rgb[~fg]
+    return bool(len(bg) and float(bg.std(axis=0).mean()) < 20)
+
+
 def ocr(src: Path, min_conf: float = 80) -> str:
     """Text in the image, or "". Sparse-text mode finds "words" in foliage and fur, so only confident,
     real-looking words are kept (TSV output carries a per-word confidence). Reliable on screenshots and graphics;
@@ -222,11 +236,13 @@ def main(args) -> Path:
 
     hint = vision.get("recreate_as") if isinstance(vision, dict) else None
     route = "vector" if info["looks_like"] == "flat" else (hint or "raster")
+    candidate_3d = object_on_plain(rgb, mask) if info["looks_like"] != "flat" else False
     result = {
         "source": str(orig), "size": [img.width, img.height], "mode": img.mode,
         "palette": pal,
         "structure": info, "subject": subject, "ocr_text": text, "vision": vision or "not requested (read sheet.png; or --describe gemini|ollama)",
         "suggested_route": route,
+        "3d_candidate": candidate_3d,
         "files": {"sheet": "sheet.png", "edges": "edges.png", "mask": "mask.png",
                   "depth": "depth.png" if depth is not None else None},
     }
@@ -235,6 +251,7 @@ def main(args) -> Path:
     if depth is not None:
         panels.append(("depth", Image.fromarray(depth)))
     contact_sheet(panels, pal, work / "sheet.png")
-    log(f"route: {route} | palette: {' '.join(s['hex'] for s in pal)}")
+    log(f"route: {route} | palette: {' '.join(s['hex'] for s in pal)}" +
+        (" | one object on a plain background: a good `cutout` -> `to3d` input" if candidate_3d else ""))
     log(f"wrote {work / 'analysis.json'} and sheet.png")
     return work

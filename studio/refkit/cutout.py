@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from . import comfy, gpu
+from . import comfy, gpu, meta
 from .common import RefkitError, log, open_image, out_dir, run, safe_name
 
 
@@ -132,4 +132,7 @@ def cut(src: Path, work: Path, prompt: str | None = None, engine: str = "comfy",
 
 def main(args) -> Path:
     src = Path(args.image).resolve()
-    return cut(src, out_dir(src, args.out), args.prompt, args.engine, args.threshold, args.feather, args.max)
+    out = cut(src, out_dir(src, args.out), args.prompt, args.engine, args.threshold, args.feather, args.max)
+    model = "sam3" if args.prompt else {"qwen": "qwen-rgba", "rembg": None}.get(args.engine, "birefnet")
+    meta.record(out, "cutout", model=model, prompt=args.prompt, engine=args.engine, inputs=[src])
+    return out

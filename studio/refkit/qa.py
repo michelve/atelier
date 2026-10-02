@@ -3,9 +3,14 @@
 Checks by type (all read-only). PASS / WARN / FAIL per check; exit code 1 if anything FAILs.
   raster (png/jpg/webp/avif): size budget, alpha halo, stray pixels; palette + colour rules only from --tokens
   svg:  path/node count, embedded rasters, tiny specks, viewBox, size budget, SSIM vs --ref
-  glb:  triangle count, texture sizes, non-manifold edges, sharp-edge ratio (rounded-everything rule), size budget
+  glb:  FAIL on broken assets (no mesh, NaN vertices, textured without UVs, >1% degenerate faces, >3% non-manifold
+        edges, texture size not what to3d was asked for — read from the model.json sidecar); WARN on budgets
+        (triangles, texture px, file size) and open edges; sharp-edge ratio only when the tokens set
+        "rounded_edges" (a project art rule, not a default)
   video (mp4/webm/gif): codec, fps, resolution, duration, size budget, faststart, loop seam
-  raster also: embedded prompt/workflow metadata, local (per-region) alpha-halo check
+  raster also: embedded prompt/workflow metadata, local (per-region) alpha-halo check, and — when the sidecar's
+        prompt quotes exact text ("CAP BLANC") — the local Qwen3-VL reads it back; FAIL if missing or misspelt
+        (tesseract fallback: warning only)
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .common import delta_e, hex_to_rgb, is_teal, load_tokens, log, rgb_to_lab, run
+from .common import delta_e, hex_to_rgb, is_teal, load_tokens, log, rgb_to_lab, run, say
 
 RASTER = {".png", ".jpg", ".jpeg", ".webp", ".avif"}
 VIDEO = {".mp4", ".webm", ".gif", ".mov"}
@@ -41,6 +46,55 @@ def _kb(p: Path) -> float:
     return round(p.stat().st_size / 1024, 1)
 
 
+QUOTED = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]{2,80})["\u201c\u201d]')
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^0-9a-z]+", " ", text.casefold()).strip()
+
+
+READ_PROMPT = ("Transcribe all text visible in this image exactly as written, one line per text element. "
+               "Output only the text.")
+
+
+def read_text(images: list[Path]) -> dict[str, tuple[str, str]]:
+    """{path: (text, reader)}. The local Qwen3-VL reads stylised poster type reliably (2026-10-01: 18/18 strings
+    on 9 posters, and it transcribed a misspelt "CAP BLANK" / "since 1920" as written); tesseract read 3/12 of the
+    same strings, so it is only the fallback when the VLM isn't installed."""
+    from . import vlm
+    try:
+        out = {str(p): (vlm.ask([p], READ_PROMPT, max_new_tokens=120), "qwen3-vl") for p in images}
+        vlm.unload()
+        return out
+    except SystemExit:
+        from .analyze import ocr
+        return {str(p): (ocr(p, min_conf=40), "tesseract") for p in images}
+
+
+def text_check(image: Path, prompt: str, read: tuple[str, str] | None = None) -> list[dict]:
+    """Every "quoted" string in the prompt vs the text read in the image. Qwen3-VL: exact match after normalising
+    case/punctuation/spacing (catches misspellings). Tesseract fallback: fuzzy (>= 0.8), and only advisory."""
+    from difflib import SequenceMatcher
+    wanted = [w for w in QUOTED.findall(prompt or "") if _norm(w)]
+    if not wanted:
+        return []
+    text, reader = read or read_text([image])[str(image)]
+    seen = " ".join(_norm(text).split())
+    words = seen.split()
+    rows = []
+    for w in wanted:
+        target = " ".join(_norm(w).split())
+        if reader == "qwen3-vl":
+            rows.append({"text": w, "found": target in seen, "reader": reader})
+            continue
+        n, best = len(target.split()), 0.0
+        for size in {max(1, n - 1), n, n + 1}:
+            for i in range(max(1, len(words) - size + 1)):
+                best = max(best, SequenceMatcher(None, target, " ".join(words[i:i + size])).ratio())
+        rows.append({"text": w, "found": best >= 0.8, "reader": reader, "similarity": round(best, 2)})
+    return rows
+
+
 def check_raster(p: Path, rep: Report, tokens: dict) -> None:
     budgets = tokens.get("budgets", {})
     im = Image.open(p)
@@ -55,6 +109,12 @@ def check_raster(p: Path, rep: Report, tokens: dict) -> None:
               if meta else "", warn_only=True)
     if "icc_profile" in im.info:
         rep.add("colour profile", "PASS", "embedded ICC profile")
+    side = _sidecar(p)
+    wants = side.get("command") in ("gen", "fix") and QUOTED.search(side.get("prompt", "") or "")
+    for row in text_check(p, side["prompt"], _READ.get(str(p))) if wants else []:
+        rep.check(f'text "{row["text"][:24]}"', row["found"], f"read by {row['reader']}"
+                  + ("" if row["reader"] == "qwen3-vl" else " (advisory: tesseract misreads stylised type)"),
+                  warn_only=row["reader"] != "qwen3-vl")
     rgba = np.array(im.convert("RGBA"))
     rgb, a = rgba[..., :3], rgba[..., 3]
     opaque = rgb[a > 200]
@@ -145,13 +205,27 @@ def check_glb(p: Path, rep: Report, tokens: dict) -> None:
             # trimesh can't decode meshopt/quantized buffers; inspect a dequantized temp copy (same geometry).
             readable = Path(tmp) / p.name
             run(["gltf-transform", "dequantize", p, readable])
-        _check_glb_geometry(readable, p, rep, b)
+        _check_glb_geometry(readable, p, rep, b, tokens)
 
 
-def _check_glb_geometry(readable: Path, p: Path, rep: Report, b: dict) -> None:
+def _sidecar(p: Path) -> dict:
+    """The run record next to a deliverable (meta.record), if refkit made it."""
+    side = p.with_suffix(".json")
+    try:
+        return json.loads(side.read_text(encoding="utf-8")) if side.exists() else {}
+    except ValueError:
+        return {}
+
+
+def _check_glb_geometry(readable: Path, p: Path, rep: Report, b: dict, tokens: dict) -> None:
     import trimesh
     scene = trimesh.load(readable, force="scene")
     meshes = [g for g in scene.geometry.values() if isinstance(g, trimesh.Trimesh)]
+    if not meshes or not sum(len(m.faces) for m in meshes):
+        rep.add("geometry", "FAIL", "no triangle mesh in the file")
+        return
+    finite = all(np.isfinite(m.vertices).all() for m in meshes)
+    rep.check("finite vertices", finite, "" if finite else "NaN/inf vertex positions")
     tris = sum(len(m.faces) for m in meshes)
     rep.check("triangles", tris <= b.get("glb_triangles", 150000), f"{tris:,} (budget {b.get('glb_triangles', 150000):,})",
               warn_only=True)
@@ -164,21 +238,41 @@ def _check_glb_geometry(readable: Path, p: Path, rep: Report, b: dict) -> None:
         m.merge_vertices(merge_tex=True, merge_norm=True)
     open_edges = sum(len(trimesh.grouping.group_rows(m.edges_sorted, require_count=1)) for m in welded)
     rep.check("watertight", open_edges == 0, f"{open_edges} open edges", warn_only=True)
-    # Rounded-everything rule: share of edges with a dihedral angle > 60 deg.
-    sharp = total = 0
-    for m in meshes:
-        if len(m.face_adjacency):
-            ang = np.degrees(m.face_adjacency_angles)
-            sharp += int((ang > 60).sum())
-            total += len(ang)
-    if total:
-        rep.check("sharp edges", sharp / total < 0.02, f"{sharp / total:.1%} of edges > 60 deg (bevel/smooth if high)",
-                  warn_only=True)
+    # Broken geometry: edges shared by 3+ faces, zero-area faces. A few are normal in generated meshes. Calibrated
+    # 2026-10-01: clean Pixal3D/TRELLIS.2 meshes 0-1.3%, a visibly shredded TRELLIS.2 mesh 7.8% -> FAIL above 3%.
+    edges = sum(len(m.edges_unique) for m in welded)
+    bad_edges = sum(int((np.bincount(m.edges_unique_inverse) > 2).sum()) for m in welded)
+    share = bad_edges / max(edges, 1)
+    rep.add("non-manifold edges", "FAIL" if share > 0.03 else ("WARN" if bad_edges else "PASS"),
+            f"{bad_edges} ({share:.2%} of edges)")
+    scale = float(max(scene.extents)) if scene.extents is not None else 1.0
+    degenerate = sum(int((m.area_faces <= 1e-12 * scale * scale).sum()) for m in meshes)
+    share = degenerate / max(tris, 1)
+    rep.add("degenerate faces", "FAIL" if share > 0.01 else ("WARN" if degenerate else "PASS"),
+            f"{degenerate} zero-area ({share:.2%})")
+    textured = [m for m in meshes if getattr(m.visual, "kind", None) == "texture"]
+    missing_uv = [m for m in textured if getattr(m.visual, "uv", None) is None or not len(m.visual.uv)]
+    rep.check("UVs on textured meshes", not missing_uv,
+              f"{len(missing_uv)} of {len(textured)} textured meshes have no UVs" if missing_uv
+              else ("all textured meshes have UVs" if textured else "untextured"))
+    # Art rule, not a default: only when the project tokens ask for rounded forms (e.g. Orbitra).
+    if tokens.get("rounded_edges"):
+        sharp = total = 0
+        for m in meshes:
+            if len(m.face_adjacency):
+                ang = np.degrees(m.face_adjacency_angles)
+                sharp += int((ang > 60).sum())
+                total += len(ang)
+        if total:
+            rep.check("sharp edges", sharp / total < 0.02, f"{sharp / total:.1%} of edges > 60 deg (bevel/smooth if high)",
+                      warn_only=True)
     try:
         from pygltflib import GLTF2
         g = GLTF2().load(str(readable))
         blob = g.binary_blob() or b""
         limit = b.get("texture_px", 2048)
+        # to3d writes the requested size into the sidecar; a different baked size means the pipeline misbehaved.
+        asked = _sidecar(p).get("texture") if _sidecar(p).get("command") == "to3d" else None
         for i, img in enumerate(g.images):
             if img.bufferView is None:
                 continue
@@ -187,7 +281,11 @@ def _check_glb_geometry(readable: Path, p: Path, rep: Report, b: dict) -> None:
             data = blob[bv.byteOffset or 0:(bv.byteOffset or 0) + bv.byteLength]
             try:
                 w, h = Image.open(io.BytesIO(data)).size
-                rep.check(f"texture {i} size", max(w, h) <= limit, f"{w}x{h} {img.mimeType}", warn_only=True)
+                rep.check(f"texture {i} size", max(w, h) <= limit, f"{w}x{h} {img.mimeType} (web budget {limit})",
+                          warn_only=True)
+                if asked:
+                    rep.check(f"texture {i} as requested", max(w, h) == min(int(asked), 4096),
+                              f"{max(w, h)} px, to3d --texture {asked}")
             except Exception:
                 rep.add(f"texture {i}", "PASS", f"{img.mimeType} (KTX2/compressed, not inspected)")
     except Exception as e:
@@ -232,9 +330,17 @@ def check_video(p: Path, rep: Report, tokens: dict) -> None:
                           ("" if jump < 12 else " (fine if the clip isn't meant to loop)"), warn_only=True)
 
 
+_READ: dict[str, tuple[str, str]] = {}   # text read in one VLM session for every raster that needs a text check
+
+
 def main(args) -> bool:
     tokens = load_tokens(args.tokens)
     ok = True
+    texty = [Path(f).resolve() for f in args.files if Path(f).suffix.lower() in RASTER
+             and _sidecar(Path(f).resolve()).get("command") in ("gen", "fix")
+             and QUOTED.search(_sidecar(Path(f).resolve()).get("prompt", "") or "")]
+    if texty:
+        _READ.update(read_text(texty))
     for f in args.files:
         p = Path(f).resolve()
         rep = Report(p)
@@ -250,9 +356,9 @@ def main(args) -> bool:
         else:
             log(f"{p.name}: no checks for {suffix}")
             continue
-        print(f"\n{p.name}")
+        say(f"\n{p.name}")
         for r in rep.rows:
-            print(f"  {r['status']:4s}  {r['check']:<30s} {r['detail']}")
+            say(f"  {r['status']:4s}  {r['check']:<30s} {r['detail']}")
         if args.json:
             (p.parent / f"{p.name}.qa.json").write_text(json.dumps(rep.rows, indent=2), encoding="utf-8")
         ok &= not rep.failed

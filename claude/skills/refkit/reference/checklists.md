@@ -32,8 +32,9 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
       PNGs through `pngquant --quality 70-90` then `oxipng -o 4` (qa: size budgets).
 - [ ] sRGB colour space, metadata stripped (`exiftool -all= file`), no embedded thumbnails.
 - [ ] No banding in dark gradients (add 1-2 % noise before encoding if needed), no JPEG ringing around edges.
-- [ ] Text in images is crisp and spelled right (generated text: `-m qwen`, then `-m banana` for dense copy;
-      or overlay real text in HTML).
+- [ ] Text in images is crisp and spelled right (qa has the local Qwen3-VL read back every "quoted" string from
+      the sidecar prompt and FAILs a missing or misspelt one; without the VLM it falls back to tesseract, advisory). Fix with `refkit fix --region "sign text"`, else
+      `-m qwen`, then `-m banana` for dense copy, or overlay real text in HTML.
 - [ ] No generator prompt left in the file (qa: embedded prompt/workflow): `oxipng --strip safe` / `exiftool -all=`.
 
 ## Cutout (RGBA)
@@ -44,11 +45,15 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
 - [ ] Trimmed to content with consistent padding (`magick cut.png -trim -bordercolor none -border 24 out.png`).
 
 ## 3D / GLB
-- [ ] Silhouette matches the reference from the reference's camera angle (render a still with that framing).
-- [ ] Clean topology after cleanup: no floating islands, normals outward; textured meshes keep their baked
-      smooth shading (decimated before baking, so no seams); shape-only meshes get weighted normals; triangle
+- [ ] Silhouette matches the reference: `inspect/views.png` 0 deg view is the photo's view for Pixal3D (camera
+      frame, before levelling — compare with `<model>-raw.glb` or `--no-level`).
+- [ ] Clay row clean from every angle: no holes, lumps, melted or staircase areas, no shredded/floating parts
+      (qa FAILs >3% non-manifold edges, missing UVs, NaN/degenerate faces); stands upright on its base.
+- [ ] Clean topology after cleanup: no floating islands, normals outward; textured meshes keep the normals they
+      were baked with (decimated before baking, so no seams); shape-only meshes get weighted normals; triangle
       count within budget (qa, default 150 k; hero 60 k is plenty for web).
-- [ ] Rounded edges (qa: sharp-edge ratio); bevel in Blender if a hard edge reads as "CG".
+- [ ] Edges as sharp or soft as the reference (`--hard-edges` for hard-surface); a "rounded everything" rule only
+      applies when the project's tokens set `rounded_edges` (qa then checks the sharp-edge ratio).
 - [ ] Materials are PBR and plausible: metallic 0 or 1 (not in between), roughness varied, no pure black/white albedo.
 - [ ] Textures ≤ 2048 px (qa), webp/KTX2 compressed, meshopt compression; `gltf-transform inspect` shows no
       unused data; origin at base centre, +Y up, 1 unit = 1 m, scale sensible.
@@ -78,7 +83,8 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
 
 ## Handoff
 - [ ] List every deliverable with path, dimensions/format, size, and the qa result.
-- [ ] Note seeds / prompts / settings used (each `gen` output has a `.json` sidecar; Omni clips store the
-      interaction id for edits) so the piece can be regenerated or extended.
+- [ ] Note seeds / prompts / settings used (every refkit output has a `.json` sidecar with model, licence, seed,
+      prompt and input hashes; `refkit runs` lists recent ones; Omni clips store the interaction id for edits) so the
+      piece can be regenerated or extended.
 - [ ] Report Google spend for the job (`<repo>\gemini-spend.csv`).
 - [ ] Say plainly what isn't perfect yet and what would fix it.

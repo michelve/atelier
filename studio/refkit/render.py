@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from . import gpu
+from . import gpu, meta
 from .common import BLENDER_SCRIPTS, RefkitError, log, out_dir, run
 
 HERO_LOOP_BUDGET_MB = 3.0   # checklist budget for a hero loop; over it we say so (qa enforces it too)
@@ -47,7 +47,7 @@ def poster(frame: Path, dest: Path) -> dict:
     return {"avif": avif.name, "webp": webp.name}
 
 
-def main(args) -> Path:
+def main(args) -> dict:
     src = Path(args.input).resolve()
     if not src.exists():
         raise RefkitError(f"refkit: no such file: {src}")
@@ -59,6 +59,7 @@ def main(args) -> Path:
     t = time.time()
     extra = ["--as-is"] if args.as_is else []
     extra += ["--transparent"] if args.transparent else []
+    extra += ["--ground"] if args.ground else []
     extra += ["--res", args.res] if args.res else []
     extra += ["--samples", args.samples] if args.samples else []
     out = blender("turntable.py", "--input", src, "--out", dest, "--frames", args.frames, "--look", args.look, *extra)
@@ -71,4 +72,7 @@ def main(args) -> Path:
     if len(rendered) > 1:
         files |= encode(rendered, dest, transparent=args.transparent, av1=args.av1)
     log("wrote " + ", ".join(str(dest / f) for f in files.values()))
-    return dest
+    meta.record(dest / files["webp"], "render", frames=len(rendered), look=args.look, as_is=args.as_is or None,
+                transparent=args.transparent or None, ground=args.ground or None, inputs=[src],
+                files=[dest / f for f in files.values()], seconds=round(time.time() - t, 1))
+    return {"outputs": [str(dest / f) for f in files.values()], "folder": str(dest)}

@@ -5,7 +5,14 @@
   krea         text -> image, Krea 2 Turbo int8: most photographic look (product/catalogue realism)
   qwen-edit    reference image(s) + instruction, Qwen-Image 2.1: best open editor, multi-reference
                (<image1>, <image2>… in the prompt); output keeps the first reference's size unless --size  [default with -i]
+               --consistent: Consistency LoRA (ausboss, qwen-research licence) keeps the edit on the source's
+               frame (no drift, less repainting); its author notes it resists edits that move things (pose, head
+               turn), so it is opt-in
   klein-edit   reference image(s) + instruction, FLUX.2 klein 4B: fast edits (~6 s)
+  hidream      text -> image, HiDream-O1 Dev (MIT, pixel-space, native 2K): photoreal alternative to krea/qwen
+  hidream-edit reference image + instruction, HiDream-O1 Dev edit mode (keeps the reference's size, /32)
+  krea-style   text -> image in the look of a style reference (-i style.png), Krea 2 Turbo + its style-reference
+               LoRA: the reference's medium/palette/brushwork, not its content
   banana       Google Nano Banana 2 (cloud, own key, paid; --yes) - 4K, up to 14 refs, dense exact text
   banana-pro   Google Nano Banana Pro (cloud, ~2x NB2's price, ranks below it) - only if NB2 fails a layout
 Every -i image (comma-separated) is a reference, in order. --enhance turns on the template's own prompt enhancer
@@ -14,16 +21,16 @@ licensed for personal / non-commercial use (Krea: < $1M revenue).
 """
 from __future__ import annotations
 
-import json
 import random
 import subprocess
 import sys
 from pathlib import Path
 
-from . import comfy, gpu, prompting
-from .common import REPO, RefkitError, log
+from . import comfy, gpu, meta, prompting
+from .common import REPO, RefkitError, log, say
 
 NANOBANANA = REPO / "nanobanana.py"
+CONSISTENCY_LORA = "qwen-image-2.1-consistency.safetensors"
 
 MODELS = {
     "z-image": {"workflow": "image_z_image_turbo_int8", "needs_image": False, "multiple": 16},
@@ -31,6 +38,9 @@ MODELS = {
     "krea": {"workflow": "image_krea2_turbo_t2i_int8", "needs_image": False, "multiple": 16},
     "qwen-edit": {"workflow": "image_qwen_image_2_1_image_edit", "needs_image": True, "multiple": 32},
     "klein-edit": {"workflow": "image_flux2_klein_image_edit_4b_distilled", "needs_image": True, "multiple": 16},
+    "krea-style": {"workflow": "image_krea2_turbo_int8_image_style_reference", "needs_image": True, "multiple": 16},
+    "hidream": {"workflow": "image_hidream_o1_dev", "needs_image": False, "multiple": 32},
+    "hidream-edit": {"workflow": "image_hidream_o1_dev", "needs_image": True, "multiple": 32},
     "banana": {"workflow": None, "needs_image": False, "cloud": "2"},
     "banana-pro": {"workflow": None, "needs_image": False, "cloud": "pro"},
 }
@@ -67,6 +77,9 @@ def banana(model: str, args) -> list[Path]:
         if res.returncode or not out.exists():
             raise RefkitError(f"refkit: Nano Banana did not run: {(res.stderr or res.stdout)[-1500:]}")
         outs.append(out)
+        meta.record(out, "gen", model=model, prompt=args.prompt, aspect=aspect, paid=True,
+                    refs=args.image.split(",") if args.image else None,
+                    inputs=[Path(i) for i in args.image.split(",")] if args.image else None)
         log(f"{out}  (cloud: Nano Banana {MODELS[model]['cloud']}, {aspect})")
     return outs
 
@@ -150,8 +163,40 @@ def qwen_refs(wf: dict, images: list[str]) -> None:
         wf[batch]["inputs"][f"images.image{i}"] = [f"ref{i + 1}", 0]
 
 
+def hidream(wf: dict, prompt: str, images: list[str], w: int, h: int, enhance: bool, edit: bool) -> None:
+    """HiDream-O1 Dev: one graph, a 'Switch to Image Edit' boolean picks text->image (empty latent at w x h) or edit
+    (reference image, latent at its size). For text->image the edit branch is cut out entirely, so its sample
+    LoadImage never has to exist on the server."""
+    comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveStringMultiline" and _title(n) == "User Prompt", "value", prompt)
+    comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "Prompt Refine" in _title(n), "value", enhance)
+    comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "Image Edit" in _title(n), "value", edit)
+    if not enhance:   # cut the Gemma rewriter branch out (ComfyUI validates both sides of a switch)
+        for n in wf.values():
+            if n["class_type"] == "ComfySwitchNode" and isinstance(n["inputs"].get("switch"), list) \
+                    and "Prompt Refine" in _title(wf[n["inputs"]["switch"][0]]):
+                n["inputs"]["on_true"] = n["inputs"]["on_false"]
+    if edit:
+        comfy.patch(wf, "LoadImage", "image", images[0])
+        comfy.prune(wf)
+        return
+    for n in wf.values():   # the rewriter also looks at the reference image in edit mode
+        if n["class_type"] == "TextGenerate":
+            n["inputs"].pop("image", None)
+    empty = [k for k, n in wf.items() if n["class_type"] == "EmptyHiDreamO1LatentImage"
+             and not isinstance(n["inputs"].get("width"), list)]
+    if len(empty) != 1:
+        raise RefkitError("refkit: HiDream workflow changed (text->image latent not found) — re-export it")
+    wf[empty[0]]["inputs"].update(width=w, height=h)
+    for n in wf.values():   # every edit/t2i switch now takes its text->image input
+        if n["class_type"] == "ComfySwitchNode" and isinstance(n["inputs"].get("switch"), list) \
+                and wf[n["inputs"]["switch"][0]]["class_type"] == "PrimitiveBoolean" \
+                and "Image Edit" in _title(wf[n["inputs"]["switch"][0]]):
+            n["inputs"]["on_true"] = n["inputs"]["on_false"]
+    comfy.prune(wf)
+
+
 def build(model: str, prompt: str, images: list[str], size: str | None, seed: int, prefix: str,
-          enhance: bool = False) -> dict:
+          enhance: bool = False, consistent: bool = False) -> dict:
     spec = MODELS[model]
     wf = comfy.load_workflow(spec["workflow"] + ".api")
     w, h = parse_size(size or "1024x1024", spec["multiple"])
@@ -177,29 +222,43 @@ def build(model: str, prompt: str, images: list[str], size: str | None, seed: in
                            and wf[n["inputs"]["on_true"][0]]["class_type"] == "EmptyLatentImage")
         size_switch["inputs"]["switch"] = size is not None
         _latent_size(wf, w, h)
+        if consistent:
+            comfy.add_lora(wf, CONSISTENCY_LORA)
     elif model == "krea":
         comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveStringMultiline" and "User Prompt" in _title(n), "value", prompt)
         comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "Refine Prompt" in _title(n), "value", enhance)
         comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "LoRA" in _title(n), "value", False)
         _latent_size(wf, w, h)
         _drop(wf, "ResolutionSelector")
+    elif model in ("hidream", "hidream-edit"):
+        hidream(wf, prompt, images, w, h, enhance, edit=model == "hidream-edit")
+    elif model == "krea-style":
+        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveStringMultiline" and "User Prompt" in _title(n), "value", prompt)
+        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "Refine Prompt" in _title(n), "value", enhance)
+        comfy.patch(wf, "LoadImage", "image", images[0])
+        # The size comes from a ResolutionSelector feeding both latents and ModelSamplingFlux: set the numbers.
+        comfy.patch(wf, "EmptyLatentImage", "width", w, expect=None)
+        comfy.patch(wf, "EmptyLatentImage", "height", h, expect=None)
+        comfy.patch(wf, "ModelSamplingFlux", "width", w)
+        comfy.patch(wf, "ModelSamplingFlux", "height", h)
+        _drop(wf, "ResolutionSelector")
     seed_all(wf, seed)
     comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", prefix, expect=None)
+    # Comfy Kitchen attention: 14-18% faster for qwen/krea/klein/qwen-edit (warm, same seeds, 2026-10-01); no gain
+    # for Z-Image's 8 steps and the largest picture change, so Z-Image stays on PyTorch attention.
+    if model != "z-image":
+        comfy.kitchen_attention(wf)
     return wf
 
 
-def sidecar(path: Path, **meta) -> None:
-    path.with_suffix(".json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def main(args) -> list[Path]:
+def main(args) -> dict | list:
     if args.list:
         for name, m in MODELS.items():
             where = f"cloud: Nano Banana {m['cloud']}" if m.get("cloud") else m["workflow"]
-            print(f"{name:12s} {where}{'  (needs -i)' if m['needs_image'] else ''}")
+            say(f"{name:12s} {where}{'  (needs -i)' if m['needs_image'] else ''}")
         return []
     if getattr(args, "recipe", None):
-        print(prompting.recipe(args.recipe))
+        say(prompting.recipe(args.recipe))
         return []
     if not args.prompt:
         raise RefkitError("refkit: gen needs a prompt (or --list / --recipe MODEL)")
@@ -218,9 +277,19 @@ def main(args) -> list[Path]:
     images = [comfy.upload(Path(p)) for p in refs]
     dest = Path(args.out)
     dest.mkdir(parents=True, exist_ok=True)
-    seeds = [(args.seed + i) if args.seed is not None else random.randrange(2**48) for i in range(args.count)]
+    if getattr(args, "auto", False):
+        from . import auto
+        args.count, args.pick = max(args.count, 4), True
+        return auto.gen_loop(args, lambda offset: batch(args, model, images, refs, dest, offset))
+    return batch(args, model, images, refs, dest)
+
+
+def batch(args, model: str, images: list[str], refs: list[str], dest: Path, offset: int = 0) -> dict:
+    """One batch of args.count variations (seed, seed+1, …; offset shifts them for another round)."""
+    seeds = [(args.seed + offset + i) if args.seed is not None else random.randrange(2**48) for i in range(args.count)]
     # Queue every variation first so ComfyUI keeps the model loaded and runs them back to back.
-    jobs = [comfy.submit(build(model, args.prompt, images, args.size, s, f"refkit/{model}", args.enhance)) for s in seeds]
+    jobs = [comfy.submit(build(model, args.prompt, images, args.size, s, f"refkit/{model}", args.enhance,
+                               getattr(args, "consistent", False))) for s in seeds]
     outs = []
     for seed, job in zip(seeds, jobs):
         for item in comfy.wait(job):
@@ -228,10 +297,26 @@ def main(args) -> list[Path]:
                 p = comfy.fetch(item, dest)
                 final = p.with_name(f"{model}-{seed}{p.suffix}")
                 p.replace(final)
-                sidecar(final, model=model, prompt=args.prompt, seed=seed, size=args.size, refs=refs)
+                meta.record(final, "gen", model=model, prompt=args.prompt, seed=seed, size=args.size,
+                            enhance=args.enhance or None, workflow=MODELS[model]["workflow"],
+                            consistent=getattr(args, "consistent", False) or None,
+                            refs=refs or None, inputs=[Path(r) for r in refs])
                 outs.append(final)
                 log(f"{final}  (seed {seed})")
+    result = {"outputs": [str(o) for o in outs], "model": model, "licence": meta.LICENCES.get(model), "seeds": seeds}
+    from .qa import QUOTED, read_text, text_check
+    if QUOTED.search(args.prompt):
+        read = read_text(outs)
+        checks = {str(o): text_check(o, args.prompt, read[str(o)]) for o in outs}
+        for o, rows in checks.items():
+            missing = [r["text"] for r in rows if not r["found"]]
+            if missing:
+                log(f"text check: {Path(o).name} is missing/misspelling {missing} ({rows[0]['reader']})")
+        result["text_check"] = checks
     if getattr(args, "pick", False) and len(outs) > 1:
         from . import score
-        score.rank(args.prompt, outs, dest)
-    return outs
+        name = f"contact-{offset // 1000 + 1}.png" if offset else "contact.png"
+        ranked = score.rank(args.prompt, outs, dest, source=Path(refs[0]) if refs else None, name=name)
+        result["ranked"] = [{"path": str(p), "score": s} for p, s in ranked]
+        result["contact"] = str(dest / name)
+    return result

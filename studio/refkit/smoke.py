@@ -4,6 +4,8 @@
      (AISetup\\templates\\export-comfy-workflows.py, the real frontend's graphToPrompt)
   2. validate every workflow's node classes / input names against the running server's /object_info
   3. run a tiny Z-Image generation and a BiRefNet cutout end to end; write smoke.png (contact sheet)
+  4. (unless --quick) a to3d of that cutout with its inspect sheet, a 1-frame render, and one local-critic
+     call — the 3D graph, Blender and the VLM are where updates break things quietly (~3 min)
 Exit code 1 on any failure, so update-tools.ps1 can report it.
 """
 from __future__ import annotations
@@ -67,6 +69,35 @@ def reexport(force: bool = False) -> bool:
     return True
 
 
+def deep(cut: Path) -> bool:
+    """3D + render + critic on the smoke cutout. Each step reports on its own; any failure fails the smoke."""
+    from . import __main__ as cli
+    from . import render, to3d
+    ok = True
+    try:
+        res = to3d.main(cli.build().parse_args(["to3d", str(cut), "--seed", "1",
+                                                "--out", str(OUT / "3d")]))
+        run = res["runs"][0]
+        # qa's gate: non-manifold above 3% of edges (a triangle mesh has ~1.5 edges per triangle)
+        bad = run["stats"]["non_manifold_edges"] > 0.045 * run["stats"]["tris"] or not run["stats"]["uv_layers"]
+        log(f"{'FAIL' if bad else 'OK  '} to3d -> {run['sheet']} (look at it)")
+        ok &= not bad
+        render.main(cli.build().parse_args(["render", run["glb"], "--frames", "1", "--res", "640x640",
+                                            "--samples", "32", "--out", str(OUT / "render")]))
+        log(f"OK   render still -> {OUT / 'render' / 'poster.webp'}")
+    except SystemExit as e:
+        log(f"FAIL 3D/render: {e}")
+        ok = False
+    try:
+        from . import vlm
+        answer = vlm.ask([cut], "Name the object in this image in at most three words.", max_new_tokens=12)
+        vlm.unload()
+        log(f"OK   local critic answers: {answer!r}")
+    except SystemExit as e:   # not installed is a warning, not a failure: the critic is optional
+        log(f"WARN local critic unavailable: {e}")
+    return ok
+
+
 def main(args) -> bool:
     ok = True
     comfy.ensure_running()
@@ -81,7 +112,7 @@ def main(args) -> bool:
         class A:  # the gen CLI namespace, minimal
             list = False; recipe = None; model = "z-image"; image = None; size = "768x768"; seed = 1; count = 1; out = str(OUT); yes = False; enhance = False
             prompt = "a white ceramic mug on a wooden table, soft daylight, product photo"
-        img = gen.main(A)[0]
+        img = Path(gen.main(A)["outputs"][0])
         cut = cutout.cut(img, OUT)
         sheet = Image.new("RGB", (1536, 768), "#808080")
         sheet.paste(Image.open(img).convert("RGB").resize((768, 768)), (0, 0))
@@ -92,6 +123,8 @@ def main(args) -> bool:
     except RefkitError as e:
         log(f"end-to-end FAILED: {e}")
         ok = False
+    if not args.quick and ok:
+        ok &= deep(cut)
     log("SMOKE PASS" if ok else "SMOKE FAIL")
     return ok
 

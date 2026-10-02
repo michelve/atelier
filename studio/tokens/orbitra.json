@@ -13,6 +13,7 @@
   },
   "max_delta_e": 12,
   "forbid_teal": true,
+  "rounded_edges": true,
   "budgets": {
     "png_kb": 400,
     "webp_kb": 200,

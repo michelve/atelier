@@ -9,19 +9,28 @@ removal is switched off, so `cutout --prompt "the left cup"` -> to3d builds that
 
 Textured models are decimated to --tris inside the graph *before* UV unwrap and baking, so the Blender pass only
 welds/cleans and keeps the baked shading (re-decimating after the bake distorts UVs and breaks the normal map).
-Then: gltf-transform optimize (meshopt + webp textures) -> f3d thumbnail.
+Then: gltf-transform optimize (meshopt + webp textures) -> f3d thumbnail -> `refkit inspect` views sheet.
+
+--quality picks the graph's detail settings (QUALITY below); --hard-edges keeps creases (QEM decimation, normals split
+above 45 deg) for boxy hard-surface objects — curved parts then look faceted, so not for round things. Each run goes to its own folder <out>/<model>-<seed>/ with a
+model.json sidecar; -n N runs N seeds and stacks their inspect sheets into compare.png.
+--delight: Marigold V2 albedo (ComfyUI core template) takes the photo's lighting and highlights out of the input
+first, so they don't get baked into the texture; the cutout's alpha is put back on the albedo.
+--refine-views (Pixal3D): redraws the first mesh's left/back/right views in the original's look and rebuilds it
+with Pixal3D multi-view — better backs and sides (multiview.py); both meshes land in compare.png.
 """
 from __future__ import annotations
 
 import random
+import re
 import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
-from . import comfy, gpu
+from . import comfy, gpu, meta
 from .common import RefkitError, log, open_image, out_dir, run
 from .render import blender
 
@@ -29,6 +38,18 @@ MODELS = {
     "pixal3d": {"workflow": "3d_pixal3d_trellis2_image_to_model", "trellis2": False},
     "trellis2": {"workflow": "3d_pixal3d_trellis2_image_to_model", "trellis2": True},
     "hunyuan3d": {"workflow": "3d_hunyuan3d-v2.1", "trellis2": None},
+}
+
+# Graph detail per --quality (Pixal3D / TRELLIS.2 graphs), chosen by a same-seed sweep on 2026-10-01 (mug, camera,
+# fox; RTX 4080 SUPER 16 GB): structure = sparse-structure grid, upsample = shape cascade resolution, smooth = Taubin
+# passes after the dual-contouring remesh, qef = QEF vertex placement in that remesh.
+#   standard: 3 smoothing passes + QEF instead of the template's 20 passes — crisper dials, lens knurling and body
+#             edges on the camera, identical on the smooth mug; same time and VRAM (~12 GB).
+#   high:     shape cascade 1536 — more fine detail on detailed objects but lumpier smooth surfaces; ~15% slower,
+#             ~14 GB peak. Structure grid 64 was tried and dropped: 636 s, 15.3 GB, a broken fragment of a mesh.
+QUALITY = {
+    "standard": {"structure": 32, "upsample": 1024, "smooth": 3, "qef": True},
+    "high": {"structure": 32, "upsample": 1536, "smooth": 3, "qef": True},
 }
 
 
@@ -44,8 +65,34 @@ def title(n: dict) -> str:
     return n.get("_meta", {}).get("title", "")
 
 
-def build(model: str, image: str, seed: int, texture: int, upsample: int, tris: int, prefix: str,
-          use_alpha: bool) -> dict:
+def tune(wf: dict, texture: int, tris: int, quality: str, hard_edges: bool) -> None:
+    """Detail settings shared by the single- and multi-view Pixal3D/TRELLIS.2 graphs."""
+    # Comfy Kitchen attention on the samplers: ~10-16% faster here, geometry within run-to-run noise in the
+    # 2026-10-01 A/B (ComfyUI 0.38 + comfy-kitchen 0.2.36; mean surface drift 0.26-0.29% vs 0.25% between two
+    # plain runs). ComfyUI issue #16027 reports corruption on older builds: the golden set re-checks it.
+    comfy.kitchen_attention(wf)
+    q = QUALITY[quality]
+    comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveInt" and title(n) == "Texture Resolution", "value", texture)
+    comfy.patch(wf, "VaeDecodeStructureTrellis2", "resolution", str(q["structure"]))
+    comfy.patch(wf, "Trellis2UpsampleStage", "target_resolution", str(q["upsample"]))
+    comfy.patch(wf, "RemeshMesh", "smooth_iters", q["smooth"])
+    comfy.patch(wf, "RemeshMesh", "sign_mode.qef", q["qef"])
+    # Final budget before unwrap + bake (see module docstring).
+    comfy.patch(wf, "DecimateMesh", "target_face_count", tris)
+    # Normal and AO maps follow --texture (the template fixes them at 2048 / 1024).
+    comfy.patch(wf, "BakeNormalMapFromMesh", "resolution", texture)
+    comfy.patch(wf, "BakeAmbientOcclusion", "resolution", texture)
+    if hard_edges:   # crisp box edges and creases; curved parts turn visibly faceted (QEM decimation)
+        dec = next(n for n in wf.values() if n["class_type"] == "DecimateMesh")
+        dec["inputs"].update({"placement_mode": "qem", "placement_mode.line_quadric_weight": 1.0,
+                              "placement_mode.feature_edge_quadric_weight": 10.0,
+                              "placement_mode.feature_edge_min_dihedral_deg": 30.0,
+                              "placement_mode.clamp_v_to_edge": True})
+        comfy.patch(wf, "MeshSmoothNormals", "crease_angle", 45, expect=None)
+
+
+def build(model: str, image: str, seed: int, texture: int, tris: int, prefix: str, use_alpha: bool,
+          quality: str = "standard", hard_edges: bool = False) -> dict:
     spec = MODELS[model]
     wf = comfy.load_workflow(spec["workflow"] + ".api")
     comfy.patch(wf, "LoadImage", "image", image)
@@ -54,11 +101,7 @@ def build(model: str, image: str, seed: int, texture: int, upsample: int, tris: 
     if spec["trellis2"] is not None:
         comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "Trellis2" in title(n), "value",
                     bool(spec["trellis2"]))
-        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveInt" and title(n) == "Texture Resolution", "value", texture)
-        # 1536 is the template default and peaks above 16 GB; 1024 fits the 4080 SUPER.
-        comfy.patch(wf, "Trellis2UpsampleStage", "target_resolution", str(upsample))
-        # Final budget before unwrap + bake (see module docstring).
-        comfy.patch(wf, "DecimateMesh", "target_face_count", tris)
+        tune(wf, texture, tris, quality, hard_edges)
         if use_alpha:
             sw = next(k for k, n in wf.items() if n["class_type"] == "ComfySwitchNode" and "background" in title(n).lower())
             load = next(k for k, n in wf.items() if n["class_type"] == "LoadImage")
@@ -82,7 +125,8 @@ def build(model: str, image: str, seed: int, texture: int, upsample: int, tris: 
 VIEWS = ("front", "left", "back", "right")
 
 
-def build_views(views: list[Path], seed: int, texture: int, upsample: int, tris: int, prefix: str) -> dict:
+def build_views(views: list[Path], seed: int, texture: int, tris: int, prefix: str, quality: str = "standard",
+                hard_edges: bool = False, framed: bool = False) -> dict:
     """Pixal3D multi-view: 1-4 separate views (front, left, back, right order) instead of the template's single
     turnaround sheet. Each crop node becomes a LoadImage of that view; views with alpha skip re-segmentation."""
     wf = comfy.load_workflow("3d_pixal3d_multi_views.api")
@@ -111,38 +155,45 @@ def build_views(views: list[Path], seed: int, texture: int, upsample: int, tris:
             del wf[cond]["inputs"][view]   # unused view: its chain becomes unreferenced and is pruned below
             continue
         wf[crop] = {"class_type": "LoadImage", "inputs": {"image": comfy.upload(views[i])}}
+        if framed:   # already on the rig (same scale in every view, on black): no per-view crop to its silhouette
+            if wf[link[0]]["class_type"].startswith("Save"):
+                del wf[link[0]]   # the template's per-view "save the crop" node; prune() keeps every Save*
+            wf[cond]["inputs"][view] = [crop, 0]
+            continue
         if has_alpha(views[i]):
             wf[f"inv_{view}"] = {"class_type": "InvertMask", "inputs": {"mask": [crop, 1]}}
             wf[to_mask]["inputs"]["masks"] = [f"inv_{view}", 0]
     comfy.patch(wf, "KSampler", "seed", seed, expect=None)
-    comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveInt" and title(n) == "Texture Resolution", "value", texture)
-    comfy.patch(wf, "Trellis2UpsampleStage", "target_resolution", str(upsample))
-    comfy.patch(wf, "DecimateMesh", "target_face_count", tris)
+    tune(wf, texture, tris, quality, hard_edges)
     comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", prefix, expect=None)
     # Prune everything no output depends on (the sheet loader, unused views, UI previews).
-    outputs = [k for k, n in wf.items() if n["class_type"] in ("Save3DAdvanced", "SaveGLB")]
-    keep, stack = set(), list(outputs)
-    while stack:
-        cur = stack.pop()
-        if cur in keep:
-            continue
-        keep.add(cur)
-        stack += [v[0] for v in wf[cur]["inputs"].values() if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str)]
-    return {k: n for k, n in wf.items() if k in keep}
+    return comfy.prune(wf)
 
 
-def main(args) -> Path:
-    if args.views:
-        return main_views(args)
-    if not args.image:
-        raise RefkitError("refkit: to3d needs an image (or --views front,left,back,right)")
-    src = Path(args.image).resolve()
-    dest = out_dir(src, args.out)
-    model = args.model or "pixal3d"
-    seed = args.seed if args.seed is not None else random.randrange(2**31)
-    alpha = has_alpha(src)
-    gpu.free_vram(keep="comfy")
-    comfy.ensure_running()
+def delight(src: Path, dest: Path) -> Path:
+    """Albedo (lighting-free colour) of a cutout, with the cutout's alpha: the to3d input for --delight."""
+    from .multiview import flatten
+    wf = comfy.load_workflow("image_marigold_v2_albedo_estimation.api")
+    comfy.patch(wf, "LoadImage", "image", comfy.upload(flatten(src, dest)))
+    comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", "refkit/albedo", expect=None)
+    comfy.prune(wf)   # drops the before/after compare node
+    comfy.kitchen_attention(wf)
+    items = [i for i in comfy.queue(wf) if i.get("type") == "output"]
+    if not items:
+        raise RefkitError("refkit: Marigold albedo produced no image")
+    albedo = open_image(comfy.fetch(items[0], dest)).convert("RGB")
+    im = open_image(src).convert("RGBA")
+    out = dest / f"{src.stem}-albedo.png"
+    Image.merge("RGBA", (*albedo.resize(im.size, Image.LANCZOS).split(), im.getchannel("A"))).save(out)
+    log(f"delit input -> {out.name}")
+    return out
+
+
+def generate(src: Path, base: Path, model: str, seed: int, alpha: bool, args) -> tuple[Path, float]:
+    """One seed through the ComfyUI graph -> <base>/<model>-<seed>/<model>-raw.glb. Several seeds run back to back
+    before any Blender step, so the models stay loaded (finish() frees VRAM for Cycles)."""
+    dest = base / f"{model}-{seed}"
+    dest.mkdir(parents=True, exist_ok=True)
     t = time.time()
     with tempfile.TemporaryDirectory() as tmp:
         upload_src = src
@@ -153,46 +204,142 @@ def main(args) -> Path:
             flat.alpha_composite(im)
             upload_src = Path(tmp) / f"{src.stem}-white.png"
             flat.convert("RGB").save(upload_src)
-        wf = build(model, comfy.upload(upload_src), seed, texture=args.texture, upsample=1024, tris=args.tris,
-                   prefix=f"refkit/{src.stem}", use_alpha=alpha)
-    if alpha:
-        log("input has alpha: using it as the subject mask (no background re-segmentation)")
+        wf = build(model, comfy.upload(upload_src), seed, texture=args.texture, tris=args.tris,
+                   prefix=f"refkit/{src.stem}", use_alpha=alpha, quality=args.quality, hard_edges=args.hard_edges)
     items = [i for i in comfy.queue(wf, timeout=3600) if str(i.get("filename", "")).lower().endswith((".glb", ".gltf"))]
     if not items:
         raise RefkitError("refkit: the 3D workflow produced no GLB")
-    raw = comfy.fetch(items[-1], dest)
-    raw = raw.replace(dest / f"{model}-raw.glb")
-    log(f"{model} mesh in {time.time() - t:.0f}s (seed {seed}) -> {raw.name}")
-    gpu.free_vram()   # release VRAM before Blender/Cycles needs it
-
-    return finish_mesh(raw, dest, model, MODELS[model]["trellis2"] is not None, args)
+    raw = comfy.fetch(items[-1], dest).replace(dest / f"{model}-raw.glb")
+    gen_s = time.time() - t
+    log(f"{model} mesh in {gen_s:.0f}s (seed {seed}) -> {raw.name}")
+    return raw, gen_s
 
 
-def main_views(args) -> Path:
+def seeds_for(args) -> list[int]:
+    return [args.seed + i if args.seed is not None else random.randrange(2**31) for i in range(args.count)]
+
+
+def main(args) -> dict:
+    if args.views:
+        return main_views(args)
+    if not args.image:
+        raise RefkitError("refkit: to3d needs an image (or --views front,left,back,right)")
+    src = Path(args.image).resolve()
+    base = out_dir(src, args.out)
+    model = args.model or "pixal3d"
+    alpha = has_alpha(src)
+    if alpha and model != "hunyuan3d":
+        log("input has alpha: using it as the subject mask (no background re-segmentation)")
+    gpu.free_vram(keep="comfy")
+    comfy.ensure_running()
+    if args.delight:
+        if not alpha:
+            raise RefkitError("refkit: --delight needs a cutout (RGBA) as input: run `refkit cutout` first")
+        src = delight(src, base)
+    if args.auto:
+        args.count = max(args.count, 3)
+    seeds = seeds_for(args)
+    raws = [generate(src, base, model, seed, alpha, args) for seed in seeds]
+    textured = MODELS[model]["trellis2"] is not None
+    runs = [finish(raw, raw.parent, model, seed, [src], gen_s, textured, args)
+            for seed, (raw, gen_s) in zip(seeds, raws)]
+    if args.refine_views:
+        if model != "pixal3d":
+            raise RefkitError("refkit: --refine-views rebuilds with Pixal3D multi-view; use -m pixal3d")
+        if not alpha:
+            raise RefkitError("refkit: --refine-views needs a cutout (RGBA) as input: run `refkit cutout` first")
+        from . import multiview
+        for r in list(runs):
+            # The raw graph mesh, not model.glb: the side views must share the photo's camera frame (Pixal3D's
+            # multi-view convention); model.glb has been levelled onto its base.
+            raw = Path(r["glb"]).parent / f"{model}-raw.glb"
+            views = multiview.side_views(src, raw, raw.parent / "views", r["seed"])
+            runs.append(run_views(views, base, r["seed"], args, framed=True))
+    result = summarise(runs, base)
+    if args.auto:
+        from . import auto
+        result |= auto.to3d_loop(src, runs, base)
+    return result
+
+
+def main_views(args) -> dict:
     views = [Path(v.strip()).resolve() for v in args.views.split(",") if v.strip()]
     if not 1 <= len(views) <= 4:
         raise RefkitError("refkit: --views takes 1-4 images in front,left,back,right order")
-    dest = out_dir(views[0], args.out)
-    seed = args.seed if args.seed is not None else random.randrange(2**31)
+    base = out_dir(views[0], args.out)
     gpu.free_vram(keep="comfy")
     comfy.ensure_running()
+    return summarise([run_views(views, base, seed, args) for seed in seeds_for(args)], base)
+
+
+def run_views(views: list[Path], base: Path, seed: int, args, framed: bool = False) -> dict:
+    """One Pixal3D multi-view run (front, left, back, right order) into <base>/pixal3d-mv-<seed>/."""
+    dest = base / f"pixal3d-mv-{seed}"
+    dest.mkdir(parents=True, exist_ok=True)
+    comfy.ensure_running()
     t = time.time()
-    wf = build_views(views, seed, texture=args.texture, upsample=1024, tris=args.tris, prefix=f"refkit/{views[0].stem}-mv")
+    wf = build_views(views, seed, texture=args.texture, tris=args.tris, prefix=f"refkit/{views[0].stem}-mv",
+                     quality=args.quality, hard_edges=args.hard_edges, framed=framed)
     items = [i for i in comfy.queue(wf, timeout=3600) if str(i.get("filename", "")).lower().endswith((".glb", ".gltf"))]
     if not items:
         raise RefkitError("refkit: the multi-view 3D workflow produced no GLB")
     raw = comfy.fetch(items[-1], dest).replace(dest / "pixal3d-mv-raw.glb")
-    log(f"pixal3d multi-view ({len(views)} views) mesh in {time.time() - t:.0f}s (seed {seed}) -> {raw.name}")
-    gpu.free_vram()
-    return finish_mesh(raw, dest, "pixal3d-mv", True, args)
+    gen_s = time.time() - t
+    log(f"pixal3d multi-view ({len(views)} views) mesh in {gen_s:.0f}s (seed {seed}) -> {raw.name}")
+    return finish(raw, dest, "pixal3d-mv", seed, views, gen_s, True, args)
+
+
+def finish(raw: Path, dest: Path, model: str, seed: int, inputs: list[Path], gen_s: float, textured: bool,
+           args) -> dict:
+    """Cleanup/optimise, inspect views, sidecar. Returns the run's result entry."""
+    gpu.free_vram()   # release VRAM before Blender/Cycles needs it
+    final = finish_mesh(raw, dest, model, textured, args)
+    run = {"model": model, "seed": seed, "glb": str(final), "thumbnail": str(dest / "model.png"),
+           "generate_s": round(gen_s, 1)}
+    if args.inspect:
+        from . import inspect3d
+        stats = inspect3d.inspect(final, dest / "inspect")
+        run["sheet"] = stats["sheet"]
+        run["stats"] = {k: stats[k] for k in ("tris", "verts", "uv_layers", "boundary_edges", "non_manifold_edges",
+                                               "degenerate_faces", "textures")}
+    meta.record(final, "to3d", model=model, seed=seed, inputs=inputs, quality=args.quality,
+                hard_edges=args.hard_edges or None, texture=args.texture, tris=args.tris,
+                levelled_deg=getattr(args, "levelled", None) or None,
+                files=[raw, dest / "model.png", *([Path(run["sheet"])] if "sheet" in run else [])],
+                generate_s=run["generate_s"], stats=run.get("stats"))
+    return run
+
+
+def summarise(runs: list[dict], base: Path) -> dict:
+    """-n > 1: stack every run's inspect sheet into compare.png (seed-labelled) to judge side by side."""
+    result = {"runs": runs, "outputs": [r["glb"] for r in runs]}
+    sheets = [r for r in runs if r.get("sheet")]
+    if len(sheets) > 1:
+        ims = [Image.open(r["sheet"]).convert("RGB") for r in sheets]
+        out = Image.new("RGB", (max(i.width for i in ims), sum(i.height + 26 for i in ims)), "#2a2a2e")
+        d, y = ImageDraw.Draw(out), 0
+        font = ImageFont.load_default(size=18)
+        for r, im in zip(sheets, ims):
+            d.text((8, y + 3), f"{r['model']} seed {r['seed']}", fill="#f2f2f2", font=font)
+            out.paste(im, (0, y + 26))
+            y += im.height + 26
+        compare = base / "compare.png"
+        out.save(compare)
+        result["compare"] = str(compare)
+        log(f"{len(sheets)} runs -> {compare} (look at it and pick)")
+    return result
 
 
 def finish_mesh(raw: Path, dest: Path, model: str, textured: bool, args) -> Path:
     """Blender cleanup -> gltf-transform (meshopt + WebP, or KTX2 for GPU-compressed textures) -> f3d thumbnail."""
     clean = dest / f"{model}-clean.glb"
     extra = ["--keep-shading"] if textured and args.material == "keep" else []
+    extra += [] if getattr(args, "level", True) else ["--no-level"]
     out = blender("cleanup.py", "--input", raw, "--output", clean, "--tris", args.tris, "--material", args.material, *extra)
-    log(next((ln for ln in out.splitlines() if ln.startswith("CLEANUP-DONE")), "cleanup done"))
+    done = next((ln for ln in out.splitlines() if ln.startswith("CLEANUP-DONE")), "cleanup done")
+    log(done)
+    tilt = re.search(r"levelled=([\d.]+)deg", done)
+    args.levelled = float(tilt.group(1)) if tilt else 0.0
 
     final = dest / "model.glb"
     # KTX2 keeps textures compressed on the GPU (less VRAM in three.js); WebP is smaller to download.

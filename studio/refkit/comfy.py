@@ -134,6 +134,59 @@ def load_workflow(name: str) -> dict:
     return json.loads((WORKFLOWS / f"{name}.json").read_text(encoding="utf-8"))
 
 
+def add_lora(wf: dict, lora_name: str, strength: float = 1.0) -> str:
+    """Put a LoraLoaderModelOnly right after the (single) UNETLoader; everything that read the UNet reads the LoRA."""
+    unets = [k for k, n in wf.items() if n["class_type"] == "UNETLoader"]
+    if len(unets) != 1:
+        raise RefkitError(f"refkit: expected one UNETLoader for the LoRA, found {len(unets)}")
+    src, key = [unets[0], 0], f"lora_{sum(k.startswith('lora_') for k in wf)}"
+    for n in wf.values():   # rewire every reader of the UNet first …
+        for name, v in n["inputs"].items():
+            if v == src:
+                n["inputs"][name] = [key, 0]
+    # … then add the LoRA, which alone still reads the UNet (a second call slots in between: UNet -> lora_1 -> lora_0)
+    wf[key] = {"class_type": "LoraLoaderModelOnly", "inputs": {"model": src, "lora_name": lora_name,
+                                                                "strength_model": strength}}
+    return key
+
+
+def prune(wf: dict) -> dict:
+    """Drop every node no Save* output depends on (unused branches, sample inputs, UI previews). In place."""
+    keep, stack = set(), [k for k, n in wf.items() if n["class_type"].startswith("Save")]
+    while stack:
+        cur = stack.pop()
+        if cur in keep or cur not in wf:
+            continue
+        keep.add(cur)
+        stack += [v[0] for v in wf[cur]["inputs"].values() if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str)]
+    for k in [k for k in wf if k not in keep]:
+        del wf[k]
+    return wf
+
+
+SAMPLERS = ("KSampler", "KSamplerAdvanced", "SamplerCustom", "CFGGuider", "BasicGuider", "DualCFGGuider")
+ATTENTION = os.environ.get("REFKIT_ATTENTION", "comfy kitchen attention")   # "pytorch attention" turns it off
+
+
+def kitchen_attention(wf: dict) -> int:
+    """Run a workflow's diffusion model(s) on Comfy Kitchen INT8 attention (faster) through one
+    ModelAttentionBackend node per model feeding a sampler/guider. Per workflow rather than the global
+    --use-ck-attention flag, so a workflow that misbehaves with it (ComfyUI issue #16027 reports TRELLIS.2 shape
+    corruption on older builds; not reproduced on 0.38 here) can be left out, and REFKIT_ATTENTION="pytorch
+    attention" turns it off everywhere. The node falls back to PyTorch attention where Comfy Kitchen is missing."""
+    wrapped: dict[tuple, str] = {}
+    for n in list(wf.values()):
+        src = n["inputs"].get("model")
+        if n["class_type"] not in SAMPLERS or not isinstance(src, list):
+            continue
+        key = wrapped.get(tuple(src))
+        if key is None:
+            key = wrapped[tuple(src)] = f"refkit_attn{len(wrapped)}"
+            wf[key] = {"class_type": "ModelAttentionBackend", "inputs": {"model": src, "attention": ATTENTION}}
+        n["inputs"]["model"] = [key, 0]
+    return len(wrapped)
+
+
 def patch(wf: dict, match, key: str, value, expect: int | None = 1) -> int:
     """Set inputs[key]=value on nodes where match(node) is true (match may be a class_type string).
     Fails loudly when the count differs from `expect` (None = at least one) — a renamed node after a ComfyUI
@@ -166,11 +219,15 @@ def validate(wf: dict) -> list[str]:
 
 
 def _cancel(base: str, prompt_id: str) -> None:
+    """Cancel one job, queued or running. The Jobs API (present in ComfyUI 0.38) does both in one idempotent
+    call; older servers get the queue-delete + interrupt pair."""
     try:
-        requests.post(f"{base}/queue", json={"delete": [prompt_id]}, timeout=5)
-        running = requests.get(f"{base}/queue", timeout=5).json().get("queue_running", [])
-        if any(len(j) > 1 and j[1] == prompt_id for j in running):
-            requests.post(f"{base}/interrupt", json={"prompt_id": prompt_id}, timeout=5)
+        r = requests.post(f"{base}/api/jobs/{prompt_id}/cancel", timeout=5)
+        if r.status_code == 404:
+            requests.post(f"{base}/queue", json={"delete": [prompt_id]}, timeout=5)
+            running = requests.get(f"{base}/queue", timeout=5).json().get("queue_running", [])
+            if any(len(j) > 1 and j[1] == prompt_id for j in running):
+                requests.post(f"{base}/interrupt", json={"prompt_id": prompt_id}, timeout=5)
         log("cancelled the ComfyUI job")
     except requests.RequestException:
         pass

@@ -42,6 +42,25 @@ RECIPES: dict[str, dict] = {
                  "else the same.' for edits. Every -i image is a reference, in order.",
         "notes": "FLUX.2 klein 4B distilled, 4 steps: fast edits and restyles (Apache 2.0).",
     },
+    "hidream": {
+        "words": (20, 250), "negatives": False,
+        "shape": "Natural-language description of the photograph or picture: subject, setting, light, lens, style. "
+                 "Exact text in double quotes. --enhance runs the template's Gemma-4 rewriter, which expands a short "
+                 "idea into a detailed prompt.",
+        "notes": "HiDream-O1 Dev (MIT): pixel-space, no VAE, native 2K (sizes in multiples of 32). The template "
+                 "samples 28 LCM steps at cfg 1. A photoreal alternative to krea/qwen; compare in a best-of-N.",
+    },
+    "hidream-edit": {
+        "words": (6, 120), "negatives": False,
+        "shape": "Instruction: what changes and what stays ('… Keep everything else the same.'). One reference (-i).",
+        "notes": "HiDream-O1 Dev edit mode; output keeps the reference's size (rounded down to multiples of 32).",
+    },
+    "krea-style": {
+        "words": (20, 150), "negatives": False,
+        "shape": "Describe the new picture's content in prose; the -i image supplies only the look (medium, palette, "
+                 "brushwork, grain). Don't describe the reference's content.",
+        "notes": "Krea 2 Turbo + Krea's style-reference LoRA, 8 steps, cfg 1.",
+    },
     "banana": {
         "words": (15, 250), "negatives": False,
         "shape": "Sentences, not keywords: subject, composition, action, location, style + camera/lens/lighting. "

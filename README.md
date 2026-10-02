@@ -44,7 +44,7 @@ from code (Cycles), then the landing page around them.
 | A brief or a reference | Product shots, posters, typography, UI art | Qwen-Image 2.1 / Krea 2 / Z-Image, best-of-N ranked, SeedVR2 upscale |
 | One or more reference images | Edits and composites that keep everything else intact | Qwen-Image 2.1 Edit (multi-reference), FLUX.2 klein |
 | A photo | A cutout with clean edges, even on fur and glass | BiRefNet, SAM 3.1 ("the left cup"), Qwen matting |
-| A photo or a turnaround | A textured, web-ready 3D model + studio turntable | Pixal3D → Blender cleanup → meshopt/KTX2 → Cycles render |
+| A photo or a turnaround | A textured, web-ready 3D model + studio turntable | Pixal3D (several seeds, optional multi-view refinement) → Blender cleanup, levelled on its base → meshopt/KTX2 → inspection sheet → Cycles render |
 | A still or two keyframes | A video clip, upscaled and smoothed | Gemini Omni / Veo (cost-guarded) → SeedVR2 + frame interpolation locally |
 
 ## How it works
@@ -54,13 +54,18 @@ Claude reads the reference (palette, shapes, light, typography), chooses the mod
 prompt that model wants, and compares the result side by side with the reference until it holds up.
 
 - **Deliverables, not pictures.** Built-in QA checks edge halos, exact colours, file-size budgets, embedded prompt
-  metadata, video faststart and turntable loop seams.
+  metadata, misspelt text, broken 3D meshes, video faststart and turntable loop seams.
+- **A second pair of eyes.** Reward models (HPSv3++, EditScore) and a local vision model rank candidates and check
+  multi-view consistency before Claude looks, so Claude spends its attention on the best two or three.
+- **Every output is traceable.** A sidecar per file records model, licence, seed, prompt and input hashes;
+  `--json` gives Claude machine-readable results.
 - **Local first.** Open models on your own GPU. Google (Nano Banana, Gemini Omni, Veo) only when it's clearly
   better, always with a cost estimate, an explicit `--yes` and a spend log.
 - **The right model for each job.** Fast drafts, photographic finals, typography, edits, cutouts, 3D and video
   each route to a different model.
 - **Keeps itself working.** A smoke test after every update re-exports and validates the workflows; a built-in
-  benchmark picks the fastest safe launch flags (≈14% faster edits and 3D on an RTX 4080 SUPER).
+  benchmark picks the fastest safe settings (Comfy Kitchen attention: 14-18% faster Qwen/Krea/klein images and
+  10-16% faster 3D on an RTX 4080 SUPER, measured with the same seeds).
 
 ## A quick taste
 
@@ -68,10 +73,10 @@ prompt that model wants, and compares the result side by side with the reference
 refkit gen "matte sage-green ceramic cup, soft window light" -m krea -n 4 --pick   # 4 options, ranked
 refkit upscale krea-1234.png --long 3840                                          # SeedVR2 detail restore
 refkit cutout photo.jpg --prompt "the cup"                                        # just that object
-refkit to3d photo.refkit/cutout-the_cup.png --out cup3d                           # textured GLB
-refkit render cup3d/model.glb --frames 96 --out cup3d                             # studio turntable
+refkit to3d photo.refkit/cutout-the_cup.png -n 3 --seed 7 --out cup3d           # 3 textured GLBs + compare.png
+refkit render cup3d/pixal3d-8/model.glb --frames 96 --ground                      # the chosen seed, turntable
 refkit video "slow push-in, steam rises" --from still.png --yes                   # paid: shows cost first
-refkit qa cup3d/model.glb cup3d/turntable.mp4                                     # production checks
+refkit qa cup3d/pixal3d-8/model.glb                                               # production checks
 ```
 
 ## Requirements
