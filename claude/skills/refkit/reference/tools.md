@@ -38,7 +38,7 @@ inspect), `gltfpack`, `ktx`/`toktx`, `f3d` (thumbnails; not meshopt), trimesh/op
 GSAP skills for code-side motion.
 
 ## Setup, update, verify
-`<repo>\setup\08-visual-tools.ps1`, `09-local-ai.ps1 [-SkipModels]` (everything it fetches is listed in `lib.ps1`:
+`<repo>\setup\shared\visual-tools.ps1`, `local-ai.ps1 [-SkipModels]` (everything it fetches is listed in `lib.ps1`:
 `$ComfyTemplates` (their embedded models), `$ComfyExtraModels`, `$ComfySkipModels`, `$RefkitHfModels` (critic and
 scorer snapshots), `$RefkitHfCache` (DINOv2, PickScore, CLIP processor), `$RefkitPackages`, `$HpsCommit`,
 `$TorchBackend`), `check.ps1` (checks all of it; `-Deep` adds refkit round trips + smoke).

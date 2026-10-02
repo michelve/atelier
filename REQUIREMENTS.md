@@ -1,7 +1,7 @@
 # Requirements
 
-Generated 2026-10-02 by `setup/templates/export-requirements.py` from the live machine - re-run it after
-installing or updating anything (`python setup\templates\export-requirements.py`).
+Generated 2026-10-02 by `setup/shared/py/export-requirements.py` from the live machine - re-run it after
+installing or updating anything (`python setup\shared\py\export-requirements.py`).
 
 ## Platform
 - **Windows 11 + NVIDIA GPU only** as built (Windows-11-10.0.26200-SP0). GPU: NVIDIA GeForce RTX 4080 SUPER, 616.92, 16376 MiB.
@@ -14,11 +14,12 @@ installing or updating anything (`python setup\templates\export-requirements.py`
 ## Python
 - `requirements.txt` - refkit venv + nanobanana deps (torch **2.14.1+cu130**, index **cu130**).
 - `requirements-lock.txt` - exact versions in `<engine>\venvs\refkit`.
-- System Python 3.14 libs (docs skills, workflow exporter): `python-docx`, `python-pptx`, `openpyxl`, `pypdf`, `pdfplumber`, `pymupdf`, `reportlab`, `playwright`, `google-genai<3`.
+- System Python (3.10+): `playwright` + Chromium for the workflow exporter; `google-genai<3` to run `nanobanana.py`
+  outside the refkit venv.
 
 ## ComfyUI (engine)
 - ComfyUI **v0.38.2** portable in `<engine>\ComfyUI` - embedded torch 2.14.1+cu130 python 3.13.14.
-- Launch flags (from `refkit bench`): see `setup/templates/comfy.cmd`. Model folders: `setup/templates/extra_model_paths.yaml`.
+- Launch flags (from `refkit bench`): see `setup/windows/comfy.cmd`. Model folders: `setup/shared/extra_model_paths.yaml`.
 - Key packages in the embedded Python:
   - `comfy-aimdo==0.5.5`
   - `comfy-angle==0.1.1`
@@ -42,7 +43,7 @@ installing or updating anything (`python setup\templates\export-requirements.py`
   - `torchsde==0.2.6`
   - `torchvision==0.29.1+cu130`
   - `transformers==5.15.1`
-- Core templates driven by refkit (models are downloaded from their embedded lists by `setup/09-local-ai.ps1`):
+- Core templates driven by refkit (models are downloaded from their embedded lists by `setup/shared/local-ai.ps1`):
   - `image_z_image_turbo_int8`
   - `image_flux2_klein_image_edit_4b_distilled`
   - `utility_image_segment_sam3`
@@ -91,7 +92,7 @@ installing or updating anything (`python setup\templates\export-requirements.py`
 | `blender-mcp` | 1.0.3 | uv tool (Blender Lab) |
 | `claude` | 2.1.287 | npm/official installer |
 
-Also installed by `setup/` (winget): `sharkdp.fd`, `junegunn.fzf`, `sharkdp.bat`, `ajeetdsouza.zoxide`, `ast-grep.ast-grep`, `dandavison.delta`, `jqlang.jq`, `MikeFarah.yq`, `chmln.sd`, `DuckDB.cli`, `charmbracelet.glow`, `dbrgn.tealdeer`, `ducaale.xh`, `JesseDuffield.lazygit`, `TheDocumentFoundation.LibreOffice`, `oschwartz10612.Poppler`, `QPDF.QPDF`, `UB-Mannheim.TesseractOCR`, `Typst.Typst`, `ImageMagick.ImageMagick`, `OliverBetz.ExifTool`, `Shssoichiro.Oxipng`, `yt-dlp.yt-dlp`, `Starship.Starship`, `chrisant996.Clink`, `Schniz.fnm`, `DEVCOM.JetBrainsMonoNerdFont`.
+Prerequisites (winget, the setup screen's step 2): `Git.Git`, `astral-sh.uv`, `Python.Python.3.13`, `OpenJS.NodeJS.LTS`, `7zip.7zip`, `BlenderFoundation.Blender`, `Gyan.FFmpeg`, `ImageMagick.ImageMagick`, `OliverBetz.ExifTool`, `Shssoichiro.Oxipng`, `UB-Mannheim.TesseractOCR`.
 Scoop (visual): `potrace`, `resvg`, `pngquant`, `libwebp`, `libavif`, `inkscape`, `f3d`.
 
 ## Models (`<engine>\models`, 70 files, 304.0 GB)

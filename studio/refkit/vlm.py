@@ -28,7 +28,7 @@ def load():
     if _model is not None:
         return _model, _processor
     if not (BASE / "config.json").exists():
-        raise RefkitError(f"refkit: local VLM not installed ({BASE}); run setup\\09-local-ai.ps1")
+        raise RefkitError(f"refkit: local VLM not installed ({BASE}); run the setup screen's step 5 (local AI stack)")
     import torch
     from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
     gpu.free_vram()

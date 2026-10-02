@@ -1,7 +1,7 @@
 """refkit smoke: after a ComfyUI update, prove the pipeline still works (~4 min; --quick ~1 min).
 
   1. re-export every workflow in studio\\workflows from the bundled templates when the templates package changed
-     (setup\\templates\\export-comfy-workflows.py, the real frontend's graphToPrompt)
+     (setup\\shared\\py\\export-comfy-workflows.py, the real frontend's graphToPrompt)
   2. validate every workflow's node classes / input names against the running server's /object_info
   3. run a tiny Z-Image generation and a BiRefNet cutout end to end; write smoke.png (contact sheet)
   4. (unless --quick) a to3d of that cutout with its inspect sheet, a 1-frame render, and one local-critic
@@ -21,7 +21,7 @@ from . import comfy, cutout, gen, host
 from .common import REPO, SCRATCH, RefkitError, log
 
 COMFY_TEMPLATES_PKG = "comfyui-workflow-templates"
-EXPORTER = REPO / "setup" / "templates" / "export-comfy-workflows.py"
+EXPORTER = REPO / "setup" / "shared" / "py" / "export-comfy-workflows.py"
 STAMP = comfy.WORKFLOWS / ".templates-version"
 OUT = SCRATCH / "smoke"
 

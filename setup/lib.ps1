@@ -1,10 +1,13 @@
-# Shared helpers for the setup phase scripts. Dot-source from each phase: . "$PSScriptRoot\lib.ps1"
+# Shared helpers and data for Atelier's setup. Dot-source it: . "$PSScriptRoot\lib.ps1" from setup\ (install, update,
+# check), . "$PSScriptRoot\..\lib.ps1" from setup\shared\ and setup\<os>\.
 $ErrorActionPreference = 'Stop'
 
-$Root       = $PSScriptRoot
+$Root       = $PSScriptRoot                                     # setup\: entry points and this file
+$SharedDir  = Join-Path $Root 'shared'                           # installers and data every OS uses
+$PyDir      = Join-Path $SharedDir 'py'                          # Python helpers (model fetch, exporters)
+$OsDir      = Join-Path $Root ($IsWindows ? 'windows' : 'macos') # this OS's shims, scheduler, adapter
 $LogDir     = Join-Path $Root 'logs'
 $BackupRoot = Join-Path $Root 'backup'
-$Templates  = Join-Path $Root 'templates'
 New-Item -ItemType Directory -Force $LogDir, $BackupRoot | Out-Null
 
 # Atelier paths - nothing machine-specific is hard-coded:

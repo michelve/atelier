@@ -59,7 +59,7 @@ def tool(name: str) -> str:
     """Resolve a CLI (npm installs `.cmd` shims on Windows, which subprocess can't find by bare name)."""
     path = shutil.which(name)
     if not path:
-        raise RefkitError(f"refkit: `{name}` is not on PATH (run <repo>\\setup\\08-visual-tools.ps1)")
+        raise RefkitError(f"refkit: `{name}` is not on PATH (run the setup screen: Setup.cmd, step 4)")
     return path
 
 

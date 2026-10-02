@@ -1,7 +1,7 @@
 # Link every skill in <repo>\claude\skills into ~\.claude\skills as a junction, so Claude Code loads them from the
 # repo (edits land in git). Safe to re-run: existing junctions are re-pointed; a real folder with the same name is
-# left alone and reported (move it away first if you want the repo version). Called by 09-local-ai.ps1.
-. "$PSScriptRoot\lib.ps1"
+# left alone and reported (move it away first if you want the repo version). Called by local-ai.ps1 and the setup screen (step 6).
+. "$PSScriptRoot\..\lib.ps1"
 $src = Join-Path $AtelierRoot 'claude\skills'
 $dst = Join-Path $ClaudeDir 'skills'
 New-Item -ItemType Directory -Force $dst | Out-Null

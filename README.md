@@ -99,7 +99,7 @@ refkit qa cup3d/pixal3d-8/model.glb                                             
 | `nanobanana.py` | Google Gemini API client: Nano Banana images, Gemini Omni / Veo video, cost guard + spend log |
 | `claude/skills/` | Claude Code skills: `refkit` (how Claude drives Atelier), `motion` |
 | `Setup.cmd` | Double-click installer: opens the setup screen (`setup/install.ps1`) |
-| `setup/` | Setup screen (`install.ps1`), installers (`08`, `09`), `link-skills.ps1`, the weekly `update.ps1`, `check.ps1`; templates for the shims, workflow exporter and model fetcher |
+| `setup/` | Setup screen (`install.ps1`), the weekly `update.ps1`, `check.ps1`; `shared/` (installers, model fetcher, workflow exporter), `windows/` (shims, scheduler) |
 | `requirements.txt` / `requirements-lock.txt` | Python deps (CUDA torch index) / exact installed versions |
 | `REQUIREMENTS.md` | Platform, tools + versions, ComfyUI + torch, every model file (generated weekly) |
 
@@ -136,8 +136,8 @@ type a step's number to run just that one. On a fresh machine it looks like this
 | 1. System check | Confirms Windows 11 and an NVIDIA GPU + driver, and shows your VRAM (16 GB recommended). |
 | 2. Prerequisites | Installs whatever is missing: Git, uv, Python, Node.js, 7-Zip, Blender, FFmpeg, ImageMagick, ExifTool, oxipng, Scoop, Playwright. |
 | 3. Engine folder | **Asks where Atelier's engine should live** (ComfyUI, ~130 GB of models, the Python venv). Shows free space per drive and saves your choice as `ATELIER_ENGINE`. You don't need to create anything yourself. |
-| 4. Visual tools | Runs `setup\08-visual-tools.ps1`: vectorizers, glTF/KTX tools, Inkscape, f3d, the `blender` command, Blender MCP. |
-| 5. Local AI stack | Runs `setup\09-local-ai.ps1`: ComfyUI, the models (a long download that resumes if interrupted), the venv, the workflows, the `refkit` and `comfy` commands, and the Claude Code skills. |
+| 4. Visual tools | Runs `setup\shared\visual-tools.ps1`: vectorizers, glTF/KTX tools, Inkscape, f3d, the `blender` command, Blender MCP. |
+| 5. Local AI stack | Runs `setup\shared\local-ai.ps1`: ComfyUI, the models (a long download that resumes if interrupted), the venv, the workflows, the `refkit` and `comfy` commands, and the Claude Code skills. |
 | 6. Claude Code + skills | Installs [Claude Code](https://claude.com/claude-code) with the official installer if it's missing (asks first), links Atelier's skills into `~\.claude\skills` so every Claude session can use them, and connects Blender MCP to Claude Code. Then sign in once by running `claude`. |
 | 7. Verify | Runs `refkit status` and `refkit smoke`: a tiny end-to-end generation and cutout. |
 | 8.–10. Optional | A Gemini API key for paid cloud images and video (entered hidden), weekly auto-updates (asks for admin), and `refkit bench` to tune ComfyUI's speed flags for your GPU. |
@@ -161,8 +161,8 @@ python -m pip install playwright; python -m playwright install chromium
 [Environment]::SetEnvironmentVariable('ATELIER_ENGINE', 'D:\AtelierEngine', 'User'); $env:ATELIER_ENGINE = 'D:\AtelierEngine'
 
 # 3. Install, then check
-pwsh -File setup\08-visual-tools.ps1
-pwsh -File setup\09-local-ai.ps1      # also links the skills (setup\link-skills.ps1)
+pwsh -File setup\shared\visual-tools.ps1
+pwsh -File setup\shared\local-ai.ps1      # also links the skills (setup\shared\link-skills.ps1)
 
 # 4. Claude Code: install, sign in once, connect Blender MCP
 irm https://claude.ai/install.ps1 | iex

@@ -22,7 +22,7 @@ def saved_env(name: str) -> str | None:
             return None
     return None
 
-# Engine folder: ATELIER_ENGINE, else <atelier repo>\engine (this file is <repo>\setup\templates\...).
+# Engine folder: ATELIER_ENGINE, else <atelier repo>\engine (this file is <repo>\setup\windows\...).
 ENGINE = Path(saved_env("ATELIER_ENGINE") or Path(__file__).resolve().parents[2] / "engine")
 REPO = ENGINE / "ComfyUI" / "ComfyUI"
 RECORDS = Path.home() / "AppData" / "Roaming" / "Comfy Desktop" / "installations.json"

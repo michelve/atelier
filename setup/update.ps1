@@ -55,7 +55,7 @@ try {
             # PyPI package of the same name, so check the official tags instead.
             $tag = git ls-remote --tags --refs https://projects.blender.org/lab/blender_mcp.git |
                 ForEach-Object { ($_ -split 'refs/tags/v')[1] } | Sort-Object { [version]$_ } | Select-Object -Last 1
-            if ($tag -ne $BlenderMcpVersion) { $summary.Add("      blender-mcp $BlenderMcpVersion -> $tag (bump `$BlenderMcpVersion in lib.ps1, re-run 08)") }
+            if ($tag -ne $BlenderMcpVersion) { $summary.Add("      blender-mcp $BlenderMcpVersion -> $tag (bump `$BlenderMcpVersion in lib.ps1, re-run setup step 4)") }
         }
         Invoke-UpdateStep 'npm (svgo, glTF tools)' {
             npm outdated -g --depth=0 | Select-String -Pattern ('^(' + (($NpmTools | ForEach-Object { [regex]::Escape($_) }) -join '|') + ') ') | Out-Host
@@ -73,7 +73,7 @@ try {
         Invoke-UpdateStep 'HPSv3++ runner (pinned commit)' {
             $head = ((git ls-remote $HpsRepo HEAD) -split '\s')[0]
             if (-not $head.StartsWith($HpsCommit)) {
-                $summary.Add("      hpsv3-4bit pinned $HpsCommit, upstream $($head.Substring(0, 7)) (review, bump `$HpsCommit, re-run 09)")
+                $summary.Add("      hpsv3-4bit pinned $HpsCommit, upstream $($head.Substring(0, 7)) (review, bump `$HpsCommit, re-run setup step 5)")
             }
         }
     } else {
@@ -115,7 +115,7 @@ try {
                 } finally { Pop-Location }
                 if ($LASTEXITCODE) { throw "update.py exit $LASTEXITCODE" }
                 Write-Ok "ComfyUI $(git -C $ComfyGit describe --tags)"
-                python "$PSScriptRoot\templates\sync-comfy-desktop.py" | Out-Host   # Desktop shows the real version
+                python "$OsDir\sync-comfy-desktop.py" | Out-Host   # Desktop shows the real version
             }
             # Safety net: restart our server if it still runs the old version (smoke does it when idle), re-export
             # workflows if the bundled templates changed, validate them against the new node definitions, and run
@@ -130,7 +130,7 @@ try {
         # Keep the repo's requirements.txt / requirements-lock.txt / REQUIREMENTS.md matching what is now installed
         # (the changes show up in `git status` for review + commit).
         Invoke-UpdateStep 'requirements manifest (repo)' {
-            python "$PSScriptRoot\templates\export-requirements.py" --repo $AtelierRoot | Out-Host
+            python "$PyDir\export-requirements.py" --repo $AtelierRoot | Out-Host
         }
     }
 } finally { $lock.ReleaseMutex() }

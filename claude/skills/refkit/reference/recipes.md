@@ -133,5 +133,5 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
 - Two ComfyUIs on one GPU: refkit reuses whatever of ours runs on 8188-8195 (incl. Comfy Desktop); close extras.
 - Slow after an update: `refkit bench`, compare with the numbers in `~\.local\bin\comfy.cmd`'s comment.
 - Nano Banana / Omni / Veo says "paid call not run": it needs `--yes` after you have shown the cost estimate.
-- Reinstall / verify everything: `<repo>\setup\08-visual-tools.ps1`, `09-local-ai.ps1` (ComfyUI models, critic/
+- Reinstall / verify everything: `<repo>\setup\shared\visual-tools.ps1`, `local-ai.ps1` (ComfyUI models, critic/
   scorer weights, the DINOv2/PickScore cache, the HPSv3++ env), `check.ps1 -Deep`.

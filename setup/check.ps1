@@ -22,7 +22,7 @@ foreach ($area in $tools.Keys) {
     }
 }
 
-# --- Engine, venv, weights, workflows (08/09) ---
+# --- Engine, venv, weights, workflows (setup steps 4-5) ---
 $env:PYTHONNOUSERSITE = '1'
 $comfyPy = "$StudioRoot\ComfyUI\python_embeded\python.exe"
 $ct = (Test-Path $comfyPy) ? (& $comfyPy -s -c "import torch; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
@@ -34,22 +34,22 @@ Check 'visual' 'refkit venv imports + GPU' ($rt -match 'True$') $rt
 foreach ($pair in $RefkitHfModels) {
     $dir = ($pair -split '=', 2)[0]
     $ok = (Test-Path "$StudioRoot\models\$dir\config.json") -or (Test-Path "$StudioRoot\models\$dir\adapter_config.json")
-    Check 'visual' "weights models\$dir" $ok 'run 09-local-ai.ps1'
+    Check 'visual' "weights models\$dir" $ok 'run setup step 5 (shared\local-ai.ps1)'
 }
 foreach ($pair in $RefkitHfCache) {
     $repo = ($pair -split '=', 2)[0]
     $ok = Test-Path "$StudioRoot\models\scoring\models--$($repo -replace '/', '--')\snapshots\*\config.json"
-    Check 'visual' "weights $repo (HF cache)" $ok 'run 09-local-ai.ps1 (else downloaded on first use)'
+    Check 'visual' "weights $repo (HF cache)" $ok 'run setup step 5 (else downloaded on first use)'
 }
-Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path "$StudioRoot\tools\hpsv3-4bit\.venv\Scripts\hpsv3pp-score.exe") 'run 09-local-ai.ps1 (refkit falls back to PickScore)'
+Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path "$StudioRoot\tools\hpsv3-4bit\.venv\Scripts\hpsv3pp-score.exe") 'run setup step 5 (refkit falls back to PickScore)'
 Remove-Item Env:PYTHONNOUSERSITE
 foreach ($t in $ComfyTemplates) {
-    Check 'visual' "workflow $t" (Test-Path "$StudioCode\workflows\$t.api.json") 'run 09-local-ai.ps1'
+    Check 'visual' "workflow $t" (Test-Path "$StudioCode\workflows\$t.api.json") 'run setup step 5'
 }
 if (Test-Path $rkPy) {
     # Same model list the installer downloads (read from the templates), so the check can't drift from it.
     $env:PYTHONNOUSERSITE = '1'
-    $want = & $rkPy "$Templates\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @ComfyModelArgs |
+    $want = & $rkPy "$PyDir\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @ComfyModelArgs |
         Select-String '^\s+(\S+)\s+<-' | ForEach-Object { $_.Matches[0].Groups[1].Value }
     Remove-Item Env:PYTHONNOUSERSITE
     $missing = @($want | Where-Object { -not (Test-Path "$StudioRoot\models\$_") })

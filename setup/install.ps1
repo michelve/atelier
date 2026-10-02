@@ -134,13 +134,13 @@ $Steps = @(
            $script:StudioRoot = $choice
            Write-Ok "ATELIER_ENGINE = $choice (saved for your user)"
        } }
-    @{ Key = 'visual'; Title = 'Visual tools'; Detail = 'setup\08: vectorizers, glTF/KTX tools, Inkscape, f3d, blender shim, Blender MCP'
+    @{ Key = 'visual'; Title = 'Visual tools'; Detail = 'shared\visual-tools.ps1: vectorizers, glTF/KTX tools, Inkscape, f3d, blender shim, Blender MCP'
        Check = {
            $missing = @($VisualTools | Where-Object { -not (Test-Cmd $_) })
            if ($missing) { @{ State = 'todo'; Note = "missing: $($missing -join ', ')" } } else { @{ State = 'done'; Note = 'all on PATH' } }
        }
-       Run = { Invoke-Phase '08-visual-tools.ps1' } }
-    @{ Key = 'ai'; Title = 'Local AI stack'; Detail = 'setup\09: ComfyUI, models (~130 GB, resumable), venv, workflows, refkit + comfy commands, Claude skills'
+       Run = { Invoke-Phase 'shared\visual-tools.ps1' } }
+    @{ Key = 'ai'; Title = 'Local AI stack'; Detail = 'shared\local-ai.ps1: ComfyUI, models (~130 GB, resumable), venv, workflows, refkit + comfy commands, Claude skills'
        Check = {
            $eng = (Get-SavedEngine) ?? $StudioRoot
            $parts = [ordered]@{
@@ -155,7 +155,7 @@ $Steps = @(
            if ($missing -or $models -lt 30) { return @{ State = 'partial'; Note = "missing: $((@($missing) + $(if ($models -lt 30) { "models ($models files)" })) -join ', ')" } }
            @{ State = 'done'; Note = "$models model files in $eng" }
        }
-       Run = { Invoke-Phase '09-local-ai.ps1' $(if ($SkipModels) { '-SkipModels' }) } }
+       Run = { Invoke-Phase 'shared\local-ai.ps1' $(if ($SkipModels) { '-SkipModels' }) } }
     @{ Key = 'claude'; Title = 'Claude Code + skills'; Detail = 'installs Claude Code, links the skills into ~\.claude\skills, connects Blender MCP'
        Check = {
            $skills = @(Get-ChildItem "$AtelierRoot\claude\skills" -Directory | Where-Object { Test-Path "$($_.FullName)\SKILL.md" })
@@ -178,7 +178,7 @@ $Steps = @(
                if (Test-Cmd claude) { Write-Ok "Claude Code $(claude --version)" }
                else { Write-Warn2 'Claude Code not installed - see https://claude.com/claude-code, then run this step again' }
            }
-           & "$PSScriptRoot\link-skills.ps1"
+           & "$SharedDir\link-skills.ps1"
            # Blender MCP lets Claude drive a running Blender; 08 installs the add-on + the blender-mcp server.
            if ((Test-Cmd claude) -and (Test-Cmd blender-mcp) -and -not (Test-BlenderMcp)) {
                claude mcp add --scope user blender -- blender-mcp

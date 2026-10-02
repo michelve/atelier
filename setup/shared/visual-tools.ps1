@@ -1,11 +1,11 @@
-# Phase 08 (no admin): classic image / vector / 3D tools for the reference -> vector / 3D / motion pipeline.
+# Visual tools (no admin; the setup screen's step 4): classic image / vector / 3D tools for the reference -> vector / 3D / motion pipeline.
 #   scoop:  potrace, resvg, pngquant, cwebp (libwebp), avifenc (libavif), Inkscape + f3d (portable, extras bucket)
 #   vtracer CLI (GitHub release binary)      npm: svgo, @gltf-transform/cli, gltfpack      scoop: ktx-software
 #   `blender` shim in ~\.local\bin (newest Blender install) - refkit needs it on PATH
 #   Blender: official Blender Lab MCP add-on (headless install) + the blender-mcp server as a uv tool; rembg (uv tool)
 #   (No Ollama model: the Claude session is the vision model; `refkit analyze --describe gemini|ollama` is opt-in.)
-. "$PSScriptRoot\lib.ps1"
-Start-PhaseLog '08-visual-tools'
+. "$PSScriptRoot\..\lib.ps1"
+Start-PhaseLog 'visual-tools'
 Update-SessionPath
 
 Write-Step 'Backup (scoop list, npm globals, uv tools, Blender user prefs)'

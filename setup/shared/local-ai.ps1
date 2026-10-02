@@ -1,4 +1,4 @@
-# Phase 09 (no admin): Atelier's local GPU stack. Everything runs on this PC; no cloud nodes, no accounts.
+# Local AI stack (no admin; the setup screen's step 5): Atelier's local GPU stack. Everything runs on this PC; no cloud nodes, no accounts.
 #   Engine folder = $env:ATELIER_ENGINE, else <repo>\engine (see lib.ps1). Needs ~150 GB free, a fast drive.
 #   ComfyUI portable (NVIDIA, torch cu130) in <engine>\ComfyUI, localhost only, --disable-api-nodes
 #   Shared model store <engine>\models (~130 GB): every model the templates in lib.ps1 `$ComfyTemplates` list
@@ -7,8 +7,8 @@
 #   API-format workflows exported from the core templates into <repo>\studio\workflows; skills linked into Claude Code
 # Re-runnable: finished steps are skipped and model downloads resume.
 param([switch]$SkipModels)
-. "$PSScriptRoot\lib.ps1"
-Start-PhaseLog '09-local-ai'
+. "$PSScriptRoot\..\lib.ps1"
+Start-PhaseLog 'local-ai'
 Update-SessionPath
 
 $ComfyDir = Join-Path $StudioRoot 'ComfyUI'
@@ -41,9 +41,9 @@ Write-Ok "ComfyUI torch: $torch"
 
 Write-Step 'Model paths, output folder, shims, ATELIER_ENGINE'
 New-Item -ItemType Directory -Force "$StudioRoot\models", "$StudioRoot\output", $shimDir | Out-Null
-Write-AtelierTemplate "$Templates\extra_model_paths.yaml" "$StudioRoot\extra_model_paths.yaml"
-Write-AtelierTemplate "$Templates\comfy.cmd" "$shimDir\comfy.cmd"
-Write-AtelierTemplate "$Templates\refkit.cmd" "$shimDir\refkit.cmd"
+Write-AtelierTemplate "$SharedDir\extra_model_paths.yaml" "$StudioRoot\extra_model_paths.yaml"
+Write-AtelierTemplate "$OsDir\comfy.cmd" "$shimDir\comfy.cmd"
+Write-AtelierTemplate "$OsDir\refkit.cmd" "$shimDir\refkit.cmd"
 Add-UserPath $shimDir
 # Scheduled updates and new terminals find the same engine folder.
 [Environment]::SetEnvironmentVariable('ATELIER_ENGINE', $StudioRoot, 'User')
@@ -65,7 +65,7 @@ Write-Ok "refkit torch: $vt"
 if ($SkipModels) { Write-Skip 'models (-SkipModels)' }
 else {
     Write-Step 'Models (resumable)'
-    & $VenvPy "$Templates\fetch-comfy-models.py" --comfy $ComfyDir --dest "$StudioRoot\models" @ComfyTemplates @ComfyModelArgs
+    & $VenvPy "$PyDir\fetch-comfy-models.py" --comfy $ComfyDir --dest "$StudioRoot\models" @ComfyTemplates @ComfyModelArgs
     if ($LASTEXITCODE) { Write-Warn2 'some downloads failed; re-run this script to resume' }
 
     Write-Step 'Critic / scorer weights (Hugging Face snapshots, resumable)'
@@ -101,7 +101,7 @@ if (-not (& $up)) {
     foreach ($i in 1..90) { if (& $up) { break }; Start-Sleep 2 }
 }
 if (& $up) {
-    python "$Templates\export-comfy-workflows.py" --comfy $ComfyDir --out "$StudioCode\workflows" @ComfyTemplates
+    python "$PyDir\export-comfy-workflows.py" --comfy $ComfyDir --out "$StudioCode\workflows" @ComfyTemplates
     Write-Ok "workflows -> $StudioCode\workflows"
 } else { Write-Warn2 "ComfyUI did not start; see $StudioRoot\comfyui.log" }
 

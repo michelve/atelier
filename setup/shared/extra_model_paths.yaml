@@ -1,4 +1,4 @@
-# Shared model store for ComfyUI and refkit. Written to <engine>\extra_model_paths.yaml by setup\09-local-ai.ps1
+# Shared model store for ComfyUI and refkit. Written to <engine>\extra_model_paths.yaml by setup\shared\local-ai.ps1
 # ({{ENGINE_FWD}} = the engine folder, forward slashes). Every model folder ComfyUI knows is mapped so new core
 # templates (video, SeedVR2, frame interpolation, audio) find their files here; is_default makes UI downloads land here.
 aistudio:
