@@ -18,17 +18,20 @@ $tools = [ordered]@{
 foreach ($area in $tools.Keys) {
     foreach ($t in $tools[$area]) {
         $cmd = Get-Command $t -CommandType Application -ErrorAction Ignore | Select-Object -First 1
+        if (-not $cmd -and $OptionalTools -contains $t) { continue }   # not used on this OS / optional engine
         Check $area $t ([bool]$cmd) ($cmd ? $cmd.Source : 'not on PATH')
     }
 }
 
 # --- Engine, venv, weights, workflows (setup steps 4-5) ---
 $env:PYTHONNOUSERSITE = '1'
-$comfyPy = "$StudioRoot\ComfyUI\python_embeded\python.exe"
-$ct = (Test-Path $comfyPy) ? (& $comfyPy -s -c "import torch; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
-Check 'visual' 'ComfyUI torch sees the GPU' ($ct -match 'True$') $ct
-$rkPy = "$StudioRoot\venvs\refkit\Scripts\python.exe"
-$rt = (Test-Path $rkPy) ? (& $rkPy -c "import torch, cv2, vtracer, trimesh, spandrel, bitsandbytes, peft, editscore; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
+$comfyPy = Get-EnginePython
+if ((Test-Path $comfyPy) -or $EngineRequired) {
+    $ct = (Test-Path $comfyPy) ? (& $comfyPy -s -c "import torch; print(torch.__version__, $TorchGpuProbe)" 2>&1 | Out-String).Trim() : 'not installed'
+    Check 'visual' 'ComfyUI torch sees the GPU' ($ct -match 'True$') $ct
+}
+$rkPy = Get-VenvPython "$StudioRoot\venvs\refkit"
+$rt = (Test-Path $rkPy) ? (& $rkPy -c "import $VenvImports; print(torch.__version__, $TorchGpuProbe)" 2>&1 | Out-String).Trim() : 'not installed'
 Check 'visual' 'refkit venv imports + GPU' ($rt -match 'True$') $rt
 # Local critic / scorers (vlm.py, score.py): Hugging Face snapshots + the HPSv3++ runner's own env.
 foreach ($pair in $RefkitHfModels) {
@@ -41,12 +44,14 @@ foreach ($pair in $RefkitHfCache) {
     $ok = Test-Path "$StudioRoot\models\scoring\models--$($repo -replace '/', '--')\snapshots\*\config.json"
     Check 'visual' "weights $repo (HF cache)" $ok 'run setup step 5 (else downloaded on first use)'
 }
-Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path "$StudioRoot\tools\hpsv3-4bit\.venv\Scripts\hpsv3pp-score.exe") 'run setup step 5 (refkit falls back to PickScore)'
+if ($HpsEnabled) {
+    Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path (Get-VenvBin "$StudioRoot\tools\hpsv3-4bit\.venv" 'hpsv3pp-score')) 'run setup step 5 (refkit falls back to PickScore)'
+}
 Remove-Item Env:PYTHONNOUSERSITE
 foreach ($t in $ComfyTemplates) {
     Check 'visual' "workflow $t" (Test-Path "$StudioCode\workflows\$t.api.json") 'run setup step 5'
 }
-if (Test-Path $rkPy) {
+if ((Test-Path $rkPy) -and $ComfyTemplates) {
     # Same model list the installer downloads (read from the templates), so the check can't drift from it.
     $env:PYTHONNOUSERSITE = '1'
     $want = & $rkPy "$PyDir\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @ComfyModelArgs |
@@ -64,8 +69,8 @@ $mcp = (Get-Command claude -ErrorAction Ignore) ? (claude mcp list 2>&1 | Out-St
 Check 'visual' 'Blender MCP connected to Claude' ($mcp -match 'blender.*Connected') 'manual: claude mcp add --scope user blender -- blender-mcp'
 
 # --- Weekly update ---
-$task = Get-ScheduledTask -TaskPath '\Atelier\' -TaskName 'Weekly update' -ErrorAction Ignore
-Check 'updates' 'task: Atelier weekly update' ([bool]$task) ($task ? "next: $(($task | Get-ScheduledTaskInfo).NextRunTime)" : 'optional: setup screen step 9')
+$task = Get-ScheduledUpdate
+Check 'updates' 'task: Atelier weekly update' $task.Registered ($task.Registered ? "next: $($task.Next)" : 'optional: setup screen step 9')
 $last = Join-Path $LogDir 'last-update-atelier.txt'
 if (Test-Path $last) {
     $fails = @(Get-Content $last | Where-Object { $_ -like 'FAIL*' })
@@ -74,12 +79,12 @@ if (Test-Path $last) {
 
 # --- Round trips ---
 if ($Deep) {
-    $tmp = Join-Path $env:TEMP 'atelier-check'
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) 'atelier-check'
     Remove-Item $tmp -Recurse -Force -ErrorAction Ignore
     New-Item -ItemType Directory $tmp | Out-Null
     Push-Location $tmp
     try {
-        $bl = blender -b --factory-startup --python-expr "import bpy; bpy.ops.export_scene.gltf(filepath=r'$tmp\cube.glb')" 2>&1 | Out-String
+        $bl = blender -b --factory-startup --python-expr "import bpy; bpy.ops.export_scene.gltf(filepath=r'$(Join-Path $tmp 'cube.glb')')" 2>&1 | Out-String
         Check 'deep' 'Blender headless glTF export' (Test-Path 'cube.glb') "$($bl -split "`n" | Select-String '^Blender \d' | Select-Object -First 1)"
         # refkit round trip: flat test graphic -> analyze -> vectorize -> qa; GLB -> 1-frame Cycles render.
         magick -size 512x512 xc:'#0d0d12' -fill '#8f6bff' -draw 'roundrectangle 96,96 416,416 48,48' -fill '#ece8ff' -draw 'circle 256,256 256,176' flat.png 2>$null
