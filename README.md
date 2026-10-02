@@ -99,7 +99,7 @@ refkit qa cup3d/pixal3d-8/model.glb                                             
 | `nanobanana.py` | Google Gemini API client: Nano Banana images, Gemini Omni / Veo video, cost guard + spend log |
 | `claude/skills/` | Claude Code skills: `refkit` (how Claude drives Atelier), `motion` |
 | `Setup.cmd` | Double-click installer: opens the setup screen (`setup/install.ps1`) |
-| `setup/` | Setup screen (`install.ps1`), installers (`08`, `09`), `link-skills.ps1`, the weekly `update-tools.ps1`, `90-check.ps1`; templates for the shims, workflow exporter and model fetcher |
+| `setup/` | Setup screen (`install.ps1`), installers (`08`, `09`), `link-skills.ps1`, the weekly `update.ps1`, `check.ps1`; templates for the shims, workflow exporter and model fetcher |
 | `requirements.txt` / `requirements-lock.txt` | Python deps (CUDA torch index) / exact installed versions |
 | `REQUIREMENTS.md` | Platform, tools + versions, ComfyUI + torch, every model file (generated weekly) |
 
@@ -171,14 +171,12 @@ claude mcp add --scope user blender -- blender-mcp
 refkit status; refkit smoke          # in a new terminal
 ```
 
-Weekly updates: `setup\06-schedule.ps1` from an elevated shell. It schedules `setup\update-tools.ps1`, which
-updates refkit's Python packages and ComfyUI (latest stable), runs `refkit smoke` over both, and refreshes
-`REQUIREMENTS.md`. Run `setup\update-tools.ps1 -Part User -Check` (or `-Part Admin -Check`) to see what is behind
-without installing anything. Set `ATELIER_REPOS` to a folder of git repos to get a weekly fetch report too.
+Weekly updates: `setup\windows\schedule.ps1` from an elevated shell (or step 9). It schedules `setup\update.ps1`
+(Sundays 12:30, unelevated), which updates Atelier's scoop/npm/uv tools, refkit's Python packages and ComfyUI (latest
+stable), runs `refkit smoke` over both, and refreshes `REQUIREMENTS.md`; winget prerequisites that are behind are
+reported. Run `setup\update.ps1 -Check` to see what is behind without installing anything, and `setup\check.ps1`
+(`-Deep` for round trips) to verify the install.
 </details>
-
-`setup\00`–`07` are an optional, opinionated Windows dev-environment bootstrap (shell, fonts, document tools,
-editor settings). Atelier itself only needs the setup screen, which runs `08` and `09`.
 
 Git-ignored: `engine/`, generated output (`images/`, `scratch/`, `web/`, `*.refkit/`), personal files (`docs/`,
 the Gemini spend log) and `setup/backup/`, `setup/logs/`.

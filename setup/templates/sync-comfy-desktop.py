@@ -1,6 +1,6 @@
 """Keep Comfy Desktop's record of the tracked portable install (<engine>\\ComfyUI) in step with the real version.
 
-Desktop only reads the version it stored, so after an out-of-app update (update-tools.ps1) it keeps offering an
+Desktop only reads the version it stored, so after an out-of-app update (update.ps1) it keeps offering an
 "Update" that would replace the portable package. Run after every ComfyUI update; no-op when Desktop isn't set up.
 """
 import json

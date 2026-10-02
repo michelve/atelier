@@ -8,7 +8,7 @@ $Templates  = Join-Path $Root 'templates'
 New-Item -ItemType Directory -Force $LogDir, $BackupRoot | Out-Null
 
 # Atelier paths - nothing machine-specific is hard-coded:
-#   $AtelierRoot  the repo clone (this folder's parent; resolved through a junction such as ~\AISetup)
+#   $AtelierRoot  the repo clone (this folder's parent; resolved if setup\ is reached through a junction)
 #   $StudioRoot   the engine folder: ComfyUI portable, models (~130 GB), venvs, outputs. $env:ATELIER_ENGINE, else
 #                 <repo>\engine (git-ignored). Put it on a big, fast drive: setx ATELIER_ENGINE D:\AtelierEngine
 $setupItem   = Get-Item $PSScriptRoot
@@ -22,28 +22,14 @@ $StudioCode  = Join-Path $AtelierRoot 'studio'   # refkit source + workflows
 
 $UserEnvKey    = 'HKCU:\Environment'
 $MachineEnvKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-$WtSettings    = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 $ClaudeDir     = Join-Path $HOME '.claude'
 
-# winget packages AISetup installs (02-admin) and keeps current (update-tools -Part Admin).
-$WingetPackages = @(
-    # search, navigation, data
-    'sharkdp.fd', 'junegunn.fzf', 'sharkdp.bat', 'ajeetdsouza.zoxide', 'ast-grep.ast-grep', 'dandavison.delta',
-    'jqlang.jq', 'MikeFarah.yq', 'chmln.sd', 'DuckDB.cli', 'charmbracelet.glow', 'dbrgn.tealdeer',
-    'ducaale.xh', 'JesseDuffield.lazygit',
-    # documents
-    'TheDocumentFoundation.LibreOffice', 'oschwartz10612.Poppler', 'QPDF.QPDF', 'UB-Mannheim.TesseractOCR', 'Typst.Typst',
-    # images and media
-    'ImageMagick.ImageMagick', 'OliverBetz.ExifTool', 'Shssoichiro.Oxipng', 'yt-dlp.yt-dlp',
-    # shell
-    'Starship.Starship', 'chrisant996.Clink', 'Schniz.fnm', 'DEVCOM.JetBrainsMonoNerdFont'
-)
-# Installed before AISetup via winget; updated alongside, never installed by it.
-$WingetPreexisting = @('BurntSushi.ripgrep.MSVC', 'Gyan.FFmpeg', 'BlenderFoundation.Blender')
-
-# Python 3.14 libraries the docx/pptx/xlsx/pdf skills rely on, and the PowerShell modules the profile loads.
-$PythonDocLibs = @('python-docx', 'python-pptx', 'openpyxl', 'pypdf', 'pdfplumber', 'pymupdf', 'reportlab', 'playwright')
-# Visual studio (08/09): portable CLIs from scoop (extras holds inkscape + f3d), the local AI root on E:.
+# winget apps Atelier needs (the setup screen's prerequisites). They are machine-wide installs, so updating them needs
+# elevation: winget (or another updater) does that; update.ps1 only reports the ones that are behind.
+$AtelierWinget = @('Git.Git', 'astral-sh.uv', 'Python.Python.3.13', 'OpenJS.NodeJS.LTS', '7zip.7zip',
+                   'BlenderFoundation.Blender', 'Gyan.FFmpeg', 'ImageMagick.ImageMagick', 'OliverBetz.ExifTool',
+                   'Shssoichiro.Oxipng', 'UB-Mannheim.TesseractOCR')
+# Visual tools (08): portable CLIs from scoop (extras holds inkscape + f3d), plus KTX-Software for `to3d --ktx2`.
 $VisualScoop = @('potrace', 'resvg', 'pngquant', 'libwebp', 'libavif', 'inkscape', 'f3d')
 $BlenderMcpVersion = '1.0.3'
 # ComfyUI core templates refkit drives; their embedded model lists decide what 09 downloads.
@@ -101,7 +87,6 @@ $RefkitPackages = @('opencv-python-headless', 'scikit-image', 'vtracer', 'trimes
 # CUDA build for every torch install (refkit venv and ComfyUI's embedded Python). PyPI's Windows torch is CPU-only,
 # so any uv/pip call that may touch torch must name this backend. The 4080 SUPER driver (616.x) supports cu130.
 $TorchBackend = 'cu130'
-$PSModules = @('PSFzf', 'CompletionPredictor', 'Terminal-Icons', 'Pester', 'Microsoft.PowerShell.SecretManagement', 'Microsoft.PowerShell.SecretStore')
 
 function Write-Step([string]$Msg) { Write-Host "==> $Msg" -ForegroundColor Cyan }
 function Write-Ok([string]$Msg)   { Write-Host "    ok  $Msg" -ForegroundColor Green }
@@ -115,10 +100,6 @@ function Start-PhaseLog([string]$Name) {
 function Test-Admin {
     ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
-function Get-OldestBackup {
-    Get-ChildItem $BackupRoot -Directory | Sort-Object Name | Select-Object -First 1
 }
 
 # PATH is read/written raw so %VAR% entries survive and the value stays REG_EXPAND_SZ.
@@ -144,11 +125,6 @@ function Send-EnvironmentChange {
     [Environment]::SetEnvironmentVariable('AISETUP_PING', $null, 'User')
 }
 
-function Test-HasExecutables([string]$Dir) {
-    [bool](Get-ChildItem ([Environment]::ExpandEnvironmentVariables($Dir)) -File -ErrorAction Ignore |
-        Where-Object Extension -in '.exe', '.cmd', '.bat', '.ps1', '.com' | Select-Object -First 1)
-}
-
 function Update-SessionPath {
     $env:PATH = (@(Get-RawPath Machine) + @(Get-RawPath User) |
         ForEach-Object { [Environment]::ExpandEnvironmentVariables($_) }) -join ';'
@@ -165,13 +141,6 @@ function Add-UserPath([string]$Dir, [switch]$Prepend) {
     Write-Ok "added to user PATH: $Dir"
 }
 
-function Remove-UserPath([string]$Dir) {
-    $key = ConvertTo-PathKey $Dir
-    $user = Get-RawPath User
-    $kept = @($user | Where-Object { (ConvertTo-PathKey $_) -ne $key })
-    if ($kept.Count -ne $user.Count) { Set-RawPath User $kept; Update-SessionPath; Write-Ok "removed from user PATH: $Dir" }
-}
-
 function Test-WingetInstalled([string]$Id) {
     $out = winget list --id $Id --exact --accept-source-agreements --disable-interactivity 2>$null | Out-String
     $out -match [regex]::Escape($Id)
@@ -186,7 +155,6 @@ function Install-WingetPackage([string]$Id, [string]$Override) {
     if ($LASTEXITCODE -eq 0) { Write-Ok $Id } else { Write-Warn2 "$Id failed (exit $LASTEXITCODE)" }
 }
 
-# Settings files are edited as ordered hashtables so key order (and diffs) stay stable.
 function Write-AtelierTemplate([string]$Source, [string]$Destination) {
     # setup\templates carry {{REPO}} / {{ENGINE}} / {{ENGINE_FWD}} instead of machine paths; fill them in on install.
     $text = (Get-Content $Source -Raw).Replace('{{REPO}}', $AtelierRoot).Replace('{{ENGINE}}', $StudioRoot).
@@ -194,11 +162,8 @@ function Write-AtelierTemplate([string]$Source, [string]$Destination) {
     [IO.File]::WriteAllText($Destination, $text, [Text.UTF8Encoding]::new($false))
 }
 
+# Settings files are edited as ordered hashtables so key order (and diffs) stay stable.
 function Read-JsonFile([string]$Path) { Get-Content $Path -Raw | ConvertFrom-Json -AsHashtable }
 function Write-JsonFile([string]$Path, $Object) {
     $Object | ConvertTo-Json -Depth 32 | Set-Content $Path -Encoding utf8NoBOM
-}
-
-function Add-Unique([object[]]$List, [string[]]$Items) {
-    @(@($List | Where-Object { $_ }) + $Items | Select-Object -Unique)
 }

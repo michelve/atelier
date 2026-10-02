@@ -1,4 +1,4 @@
-"""Write the repo's requirement files from the live machine (re-run after installs/updates; update-tools does it).
+"""Write the repo's requirement files from the live machine (re-run after installs/updates; update.ps1 does it).
 
   requirements.txt       pip/uv-installable Python deps for refkit + nanobanana (CUDA torch index included)
   requirements-lock.txt  exact versions installed in the refkit venv (uv pip freeze)
@@ -167,7 +167,8 @@ installing or updating anything (`python setup\\templates\\export-requirements.p
 ## Python
 - `requirements.txt` - refkit venv + nanobanana deps (torch **{torch_ver}**, index **{backend}**).
 - `requirements-lock.txt` - exact versions in `<engine>\\venvs\\refkit`.
-- System Python 3.14 libs (docs skills, workflow exporter): {", ".join(f"`{p}`" for p in ps_list("PythonDocLibs"))}, `google-genai<3`.
+- System Python (3.10+): `playwright` + Chromium for the workflow exporter; `google-genai<3` to run `nanobanana.py`
+  outside the refkit venv.
 
 ## ComfyUI (engine)
 - ComfyUI **{comfy_ver or "?"}** portable in `<engine>\\ComfyUI` - embedded torch {comfy_torch}.
@@ -182,7 +183,7 @@ installing or updating anything (`python setup\\templates\\export-requirements.p
 |---|---|---|
 {chr(10).join(tool_rows)}
 
-Also installed by `setup/` (winget): {", ".join(f"`{p}`" for p in ps_list("WingetPackages"))}.
+Prerequisites (winget, the setup screen's step 2): {", ".join(f"`{p}`" for p in ps_list("AtelierWinget"))}.
 Scoop (visual): {", ".join(f"`{p}`" for p in ps_list("VisualScoop"))}.
 
 ## Models (`<engine>\\models`, {len(model_rows)} files, {total / 1e9:.1f} GB)

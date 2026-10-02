@@ -19,7 +19,7 @@ $shimDir  = "$HOME\.local\bin"
 $env:PYTHONNOUSERSITE = '1'
 
 Write-Step "ComfyUI portable -> $ComfyDir"
-if (Test-Path "$ComfyDir\ComfyUI\main.py") { Write-Skip 'already installed (update with update-tools.ps1)' }
+if (Test-Path "$ComfyDir\ComfyUI\main.py") { Write-Skip 'already installed (update with update.ps1)' }
 else {
     $dl = Join-Path $StudioRoot '_downloads'
     New-Item -ItemType Directory -Force $dl | Out-Null
@@ -48,6 +48,8 @@ Add-UserPath $shimDir
 # Scheduled updates and new terminals find the same engine folder.
 [Environment]::SetEnvironmentVariable('ATELIER_ENGINE', $StudioRoot, 'User')
 $env:ATELIER_ENGINE = $StudioRoot
+# Where this clone is, for tools outside it (e.g. a shell bootstrap's check that runs Atelier's check too).
+[Environment]::SetEnvironmentVariable('ATELIER_ROOT', $AtelierRoot, 'User')
 Write-Ok "comfy + refkit -> $shimDir (engine $StudioRoot, repo $AtelierRoot)"
 
 Write-Step 'Claude Code skills -> ~\.claude\skills'
@@ -103,5 +105,5 @@ if (& $up) {
     Write-Ok "workflows -> $StudioCode\workflows"
 } else { Write-Warn2 "ComfyUI did not start; see $StudioRoot\comfyui.log" }
 
-Write-Host "`nNext: refkit status   (then 90-check.ps1 -Deep)" -ForegroundColor Cyan
+Write-Host "`nNext: refkit status   (then setup\check.ps1 -Deep)" -ForegroundColor Cyan
 Stop-Transcript | Out-Null

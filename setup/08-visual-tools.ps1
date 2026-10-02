@@ -2,7 +2,7 @@
 #   scoop:  potrace, resvg, pngquant, cwebp (libwebp), avifenc (libavif), Inkscape + f3d (portable, extras bucket)
 #   vtracer CLI (GitHub release binary)      npm: svgo, @gltf-transform/cli, gltfpack      scoop: ktx-software
 #   `blender` shim in ~\.local\bin (newest Blender install) - refkit needs it on PATH
-#   Blender: official Blender Lab MCP add-on (headless install) + the blender-mcp server as a uv tool
+#   Blender: official Blender Lab MCP add-on (headless install) + the blender-mcp server as a uv tool; rembg (uv tool)
 #   (No Ollama model: the Claude session is the vision model; `refkit analyze --describe gemini|ollama` is opt-in.)
 . "$PSScriptRoot\lib.ps1"
 Start-PhaseLog '08-visual-tools'
@@ -80,6 +80,10 @@ blender -b --python $prefsPy 2>&1 | Select-String 'MCP-PREFS-OK' | ForEach-Objec
 Write-Step 'blender-mcp server (uv tool)'
 uv tool install --force "git+https://projects.blender.org/lab/blender_mcp.git@v$BlenderMcpVersion#subdirectory=mcp"
 Write-Ok "blender-mcp -> $((Get-Command blender-mcp -ErrorAction Ignore).Source)"
+
+Write-Step 'rembg (uv tool): background removal for `refkit analyze` and `cutout --engine rembg`, no ComfyUI needed'
+uv tool install --upgrade 'rembg[cpu,cli]' --python 3.12
+Write-Ok "rembg -> $((Get-Command rembg -ErrorAction Ignore).Source)"
 
 Write-Step 'Connect Blender MCP to Claude Code (user scope)'
 $claudeCfg = try { Get-Content "$HOME\.claude.json" -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable } catch { @{} }

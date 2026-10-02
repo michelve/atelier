@@ -74,7 +74,7 @@ $Prereqs = @(
                   python -m pip install --user --upgrade playwright
                   python -m playwright install chromium } }
 )
-$VisualTools = 'vtracer', 'svgo', 'gltf-transform', 'gltfpack', 'potrace', 'resvg', 'f3d', 'blender', 'blender-mcp'
+$VisualTools = 'vtracer', 'svgo', 'gltf-transform', 'gltfpack', 'potrace', 'resvg', 'f3d', 'blender', 'blender-mcp', 'rembg'
 
 # --- steps -------------------------------------------------------------------------------------------------
 # Check returns @{ State = 'done' | 'todo' | 'partial' | 'warn'; Note = '...' }
@@ -213,17 +213,17 @@ $Steps = @(
            if ($key) { [Environment]::SetEnvironmentVariable('GEMINI_API_KEY', $key, 'User'); Write-Ok 'saved as a user environment variable' }
            else { Write-Skip 'skipped' }
        } }
-    @{ Key = 'schedule'; Title = 'Weekly updates'; Detail = 'optional: Task Scheduler runs setup\update-tools.ps1 (asks for admin)'; Optional = $true
+    @{ Key = 'schedule'; Title = 'Weekly updates'; Detail = 'optional: Task Scheduler runs setup\update.ps1 (asks for admin once)'; Optional = $true
        Check = {
-           $t = Get-ScheduledTask -TaskPath '\AISetup\' -ErrorAction Ignore | Select-Object -First 1
+           $t = Get-ScheduledTask -TaskPath '\Atelier\' -TaskName 'Weekly update' -ErrorAction Ignore
            if (-not $t) { return @{ State = 'todo'; Note = 'not scheduled' } }
-           $ok = $t.Actions[0].Arguments -like "*$AtelierRoot\setup\update-tools.ps1*"
-           @{ State = $(if ($ok) { 'done' } else { 'partial' }); Note = $(if ($ok) { 'Sundays 11:00 / 11:30' } else { 'scheduled, but for another folder' }) }
+           $ok = $t.Actions[0].Arguments -like "*$AtelierRoot\setup\update.ps1*"
+           @{ State = $(if ($ok) { 'done' } else { 'partial' }); Note = $(if ($ok) { 'Sundays 12:30' } else { 'scheduled, but for another folder' }) }
        }
        Run = {
            $p = Start-Process pwsh -Verb RunAs -Wait -PassThru -WorkingDirectory $env:WINDIR `
-               -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot\06-schedule.ps1"
-           if ($p.ExitCode) { throw "06-schedule.ps1 exit $($p.ExitCode)" }
+               -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot\windows\schedule.ps1"
+           if ($p.ExitCode) { throw "windows\schedule.ps1 exit $($p.ExitCode)" }
        } }
     @{ Key = 'bench'; Title = 'Tune speed for this GPU'; Detail = 'optional: refkit bench (~15 min), then copy the winning flags into ~\.local\bin\comfy.cmd'; Optional = $true
        Check = {

@@ -128,11 +128,10 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
   running and idle; it fails with a message rather than interrupt anyone's jobs. Then it re-exports when the
   templates changed, validates every workflow, and runs gen + cutout + to3d + render + one critic call.
   `refkit smoke --force-export` re-exports anyway; `--quick` skips the 3D/render/critic part.
-- Is anything out of date? `<repo>\setup\update-tools.ps1 -Part User -Check` (and `-Part Admin -Check`) lists
-  what is behind and installs nothing.
+- Is anything out of date? `<repo>\setup\update.ps1 -Check` lists what is behind and installs nothing.
 - "workflow patch ... matched 0 node(s)" = a template changed shape; re-export, then fix the patch in refkit.
 - Two ComfyUIs on one GPU: refkit reuses whatever of ours runs on 8188-8195 (incl. Comfy Desktop); close extras.
 - Slow after an update: `refkit bench`, compare with the numbers in `~\.local\bin\comfy.cmd`'s comment.
 - Nano Banana / Omni / Veo says "paid call not run": it needs `--yes` after you have shown the cost estimate.
 - Reinstall / verify everything: `<repo>\setup\08-visual-tools.ps1`, `09-local-ai.ps1` (ComfyUI models, critic/
-  scorer weights, the DINOv2/PickScore cache, the HPSv3++ env), `90-check.ps1 -Deep`.
+  scorer weights, the DINOv2/PickScore cache, the HPSv3++ env), `check.ps1 -Deep`.
