@@ -5,6 +5,7 @@ templates instead of a hand-kept list that would drift. Usage:
   python fetch-comfy-models.py --comfy <engine>\\ComfyUI --dest <engine>\\models TEMPLATE [TEMPLATE ...]
   --extra DIR=URL   additional files (e.g. upscale_models=https://.../4x-UltraSharp.safetensors)
   --dry-run         list what would be downloaded
+  --skip NAME       a model file a template lists but refkit doesn't use (repeatable)
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ ap.add_argument("--comfy", required=True)
 ap.add_argument("--dest", required=True)
 ap.add_argument("--extra", action="append", default=[])
 ap.add_argument("--dry-run", action="store_true")
+ap.add_argument("--skip", action="append", default=[])
 a = ap.parse_args()
 
 tpl_dir = next(Path(a.comfy).glob("python_embeded/Lib/site-packages/comfyui_workflow_templates_json/templates"))
@@ -46,7 +48,8 @@ for t in a.templates:
     if not f.exists():
         sys.exit(f"template not found: {f}")
     for directory, name, url in models_in(json.loads(f.read_text(encoding="utf-8"))):
-        wanted[dest / directory / name] = url
+        if name not in a.skip:
+            wanted[dest / directory / name] = url
 for e in a.extra:
     directory, url = e.split("=", 1)
     wanted[dest / directory / url.rsplit("/", 1)[-1].split("?")[0]] = url

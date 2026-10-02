@@ -70,7 +70,6 @@ def gen_loop(args, generate) -> dict:
         # check, 2026-10-01: HPSv3++ ranked a 3-image set as Claude did, the critic put the one that missed the
         # brief second.)
         critic = _critic(top, args.prompt, ref, "image") if len(top) > 1 else None
-        order = top
         # gen already read the text of every candidate (res["text_check"]); check all of them, best score first.
         # Only a Qwen3-VL reading can veto a candidate: tesseract misreads stylised type (advisory, as in qa).
         everyone = [p for p, _ in ranked]
@@ -86,7 +85,7 @@ def gen_loop(args, generate) -> dict:
             break
         log(f"round {r + 1}: no candidate passes the text check" + (", trying new seeds" if r + 1 < args.rounds else ""))
     if pick is None:
-        pick = {"path": str(order[0]), "why": "best available; text check failed in every round — look closely"}
+        pick = {"path": str(top[0]), "why": "best available; text check failed in every round — look closely"}
     dest = Path(args.out)
     report = write_report(dest, f"gen --auto: {args.prompt[:80]}", rounds, pick)
     return {"pick": pick["path"], "report": str(report), "rounds": len(rounds),
@@ -98,18 +97,24 @@ def to3d_loop(src: Path, runs: list[dict], base: Path) -> dict:
     sheets = [Path(r["sheet"]) for r in runs if r.get("sheet")]
     critic = _critic(sheets, "match the reference object", src, "3d") if len(sheets) > 1 else None
     by_sheet = {r["sheet"]: r for r in runs if r.get("sheet")}
-    order = [by_sheet[c["path"]] for c in critic] if critic else runs
-    if not critic:
-        why = "only/first run"
-    elif len({c["score"] for c in critic}) == 1:
-        why = "no consistent critic preference (all tied) — choose from compare.png"
+    if all(r.get("fidelity") for r in runs):
+        # Measured fidelity (silhouette, DINO vs the input) orders the runs; the critic's verdicts are notes.
+        order = runs   # summarise() already sorted them best first
+        why = ("best measured fidelity to the photo's side (silhouette, DINO) — backs aren't measured: "
+               "look at compare.png before choosing")
+    elif critic and len({c["score"] for c in critic}) > 1:
+        order, why = [by_sheet[c["path"]] for c in critic], "best by critic"
     else:
-        why = "best by critic"
+        order = runs
+        why = "no measured or critic preference — choose from compare.png" if critic else "only/first run"
     pick = {"path": order[0]["glb"], "why": why}
-    # The "score" column for 3D: open + non-manifold edges from inspect (lower is cleaner).
-    rounds = [{"score_name": "open/non-manifold edges",
-               "ranked": [(r["glb"], f"{r.get('stats', {}).get('boundary_edges', '-')}/"
-                                     f"{r.get('stats', {}).get('non_manifold_edges', '-')}") for r in order],
+
+    def cell(r):
+        f, s = r.get("fidelity") or {}, r.get("stats", {})
+        return (f"{f.get('silhouette')}/{f.get('dino')}" if f else "-") + \
+            f" · {s.get('boundary_edges', '-')}/{s.get('non_manifold_edges', '-')}"
+    rounds = [{"score_name": "silhouette/DINO · open/non-manifold edges",
+               "ranked": [(r["glb"], cell(r)) for r in order],
                "critic": [{**c, "path": by_sheet[c["path"]]["glb"]} for c in critic] if critic else None,
                "contact": str(base / "compare.png") if (base / "compare.png").exists() else None}]
     report = write_report(base, f"to3d --auto: {src.name}", rounds, pick)

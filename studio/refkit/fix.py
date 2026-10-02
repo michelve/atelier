@@ -56,16 +56,9 @@ def redraw(crop: Image.Image, prompt: str, engine: str, denoise: float, seed: in
         wf = gen.build("qwen-edit", f"{prompt} Keep everything else exactly the same.", [comfy.upload(src)], None,
                        seed, "refkit/fix", consistent=True)
     else:
-        wf = gen.build("z-image", prompt, [], f"{size[0]}x{size[1]}", seed, "refkit/fix")
-        latent = next(k for k, n in wf.items() if n["class_type"] == "EmptySD3LatentImage")
-        vae = next(n["inputs"]["vae"] for n in wf.values() if n["class_type"] == "VAEDecode")
-        wf["fix_load"] = {"class_type": "LoadImage", "inputs": {"image": comfy.upload(src)}}
-        wf[latent] = {"class_type": "VAEEncode", "inputs": {"pixels": ["fix_load", 0], "vae": vae}}
-        comfy.patch(wf, "KSampler", "denoise", denoise)
-    items = [i for i in comfy.queue(wf) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError("refkit: the fix pass produced no image")
-    p = comfy.fetch(items[0], work)
+        wf = gen.img2img(gen.build("z-image", prompt, [], f"{size[0]}x{size[1]}", seed, "refkit/fix"),
+                         comfy.upload(src), denoise)
+    p = comfy.first_output(wf, work, "the fix pass produced no image")
     out = open_image(p).convert("RGB").resize(crop.size, Image.LANCZOS)
     p.unlink()
     src.unlink(missing_ok=True)

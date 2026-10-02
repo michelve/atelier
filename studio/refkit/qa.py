@@ -54,10 +54,24 @@ _TEXT_CUE = re.compile(r"\b(text|texts|word|words|reads?|reading|says?|saying|ti
                        r"[^\"\u201c]{0,40}$", re.I)
 
 
+_LIST_GAP = re.compile(r"^\s*(?:,|;|/|&|\+|and|or|then)?\s*(?:and|or)?\s*$", re.I)
+
+
 def wanted_text(prompt: str) -> list[str]:
-    """The quoted strings the prompt asks to be rendered (see _TEXT_CUE)."""
-    return [m.group(1) for m in QUOTED.finditer(prompt or "")
-            if _norm(m.group(1)) and _TEXT_CUE.search(prompt[:m.start()])]
+    """The quoted strings the prompt asks to be rendered (see _TEXT_CUE). A quote that continues a list of wanted
+    ones (labelled "A", "B" and "C") inherits the cue."""
+    out, prev_end = [], None
+    for m in QUOTED.finditer(prompt or ""):
+        if not _norm(m.group(1)):
+            continue
+        cued = _TEXT_CUE.search(prompt[:m.start()])
+        listed = prev_end is not None and _LIST_GAP.match(prompt[prev_end:m.start()])
+        if cued or listed:
+            out.append(m.group(1))
+            prev_end = m.end()
+        else:
+            prev_end = None
+    return out
 
 
 def _norm(text: str) -> str:
@@ -127,9 +141,8 @@ def check_raster(p: Path, rep: Report, tokens: dict) -> None:
               if meta else "", warn_only=True)
     if "icc_profile" in im.info:
         rep.add("colour profile", "PASS", "embedded ICC profile")
-    side = _sidecar(p)
-    wants = side.get("command") in ("gen", "fix") and wanted_text(side.get("prompt", ""))
-    for row in text_check(p, side["prompt"], _READ.get(str(p))) if wants else []:
+    prompt = _text_prompt(p)
+    for row in text_check(p, prompt, _READ.get(str(p))) if prompt else []:
         rep.check(f'text "{row["text"][:24]}"', row["found"], f"read by {row['reader']}"
                   + ("" if row["reader"] == "qwen3-vl" else " (advisory: tesseract misreads stylised type)"),
                   warn_only=row["reader"] != "qwen3-vl")
@@ -226,6 +239,13 @@ def check_glb(p: Path, rep: Report, tokens: dict) -> None:
         _check_glb_geometry(readable, p, rep, b, tokens)
 
 
+def _text_prompt(p: Path) -> str | None:
+    """The prompt of a gen/fix output that asks for rendered text (quoted or cued), else None."""
+    side = _sidecar(p)
+    prompt = side.get("prompt", "")
+    return prompt if side.get("command") in ("gen", "fix") and wanted_text(prompt) else None
+
+
 def _sidecar(p: Path) -> dict:
     """The run record next to a deliverable (meta.record), if refkit made it."""
     side = p.with_suffix(".json")
@@ -290,7 +310,8 @@ def _check_glb_geometry(readable: Path, p: Path, rep: Report, b: dict, tokens: d
         blob = g.binary_blob() or b""
         limit = b.get("texture_px", 2048)
         # to3d writes the requested size into the sidecar; a different baked size means the pipeline misbehaved.
-        asked = _sidecar(p).get("texture") if _sidecar(p).get("command") == "to3d" else None
+        side = _sidecar(p)
+        asked = side.get("texture") if side.get("command") == "to3d" else None
         for i, img in enumerate(g.images):
             if img.bufferView is None:
                 continue
@@ -354,9 +375,7 @@ _READ: dict[str, tuple[str, str]] = {}   # text read in one VLM session for ever
 def main(args) -> bool:
     tokens = load_tokens(args.tokens)
     ok = True
-    texty = [Path(f).resolve() for f in args.files if Path(f).suffix.lower() in RASTER
-             and _sidecar(Path(f).resolve()).get("command") in ("gen", "fix")
-             and wanted_text(_sidecar(Path(f).resolve()).get("prompt", ""))]
+    texty = [p for p in (Path(f).resolve() for f in args.files) if p.suffix.lower() in RASTER and _text_prompt(p)]
     if texty:
         _READ.update(read_text(texty))
     for f in args.files:

@@ -55,6 +55,14 @@ RECIPES: dict[str, dict] = {
         "shape": "Instruction: what changes and what stays ('… Keep everything else the same.'). One reference (-i).",
         "notes": "HiDream-O1 Dev edit mode; output keeps the reference's size (rounded down to multiples of 32).",
     },
+    "ming": {
+        "words": (20, 200), "negatives": False,
+        "shape": "Describe the layout like a designer's brief: format (poster / app screen / infographic), sections "
+                 "top to bottom, and every visible word in double quotes — text you don't spell out comes back as "
+                 "gibberish.",
+        "notes": "Ming-Image-0.1-Design (MIT), 12 steps, ~6 s warm at ~1-2 MP. Best open model for UI/poster layouts; "
+                 "quoted text renders exactly (2026-10-02 test). No --enhance (its rewriter is a 27B model).",
+    },
     "krea-style": {
         "words": (20, 150), "negatives": False,
         "shape": "Describe the new picture's content in prose; the -i image supplies only the look (medium, palette, "

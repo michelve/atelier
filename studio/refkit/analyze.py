@@ -107,8 +107,10 @@ def depth_map(rgb: np.ndarray) -> np.ndarray | None:
 
 
 def object_on_plain(rgb: np.ndarray, mask: np.ndarray) -> bool:
-    """One dominant subject (its largest part >= 85% of the mask, covering 5-75% of the frame) on a near-uniform
-    background (outside the mask, per-channel std < 20): the kind of image to3d reconstructs well. A hint only."""
+    """One dominant subject (its largest part >= 85% of the mask, covering 5-75% of the frame) on a plain background:
+    the kind of image to3d reconstructs well. A hint only. "Plain" = little texture away from the subject (mean
+    gradient magnitude < 8 outside a 15 px band; studio sweeps may still shade light to dark). Calibrated
+    2026-10-02: plain studio backdrops 4.5-5, a product on a table with a blurred room 12, a busy workshop 21."""
     fg = mask > 128
     cover = fg.mean()
     if not 0.05 <= cover <= 0.75:
@@ -116,8 +118,10 @@ def object_on_plain(rgb: np.ndarray, mask: np.ndarray) -> bool:
     n, _, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8))
     if n < 2 or stats[1:, cv2.CC_STAT_AREA].max() < 0.85 * fg.sum():
         return False
-    bg = rgb[~fg]
-    return bool(len(bg) and float(bg.std(axis=0).mean()) < 20)
+    away = cv2.dilate(fg.astype(np.uint8), np.ones((31, 31), np.uint8)) == 0
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    grad = np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))
+    return bool(away.any() and float(grad[away].mean()) < 8)
 
 
 def ocr(src: Path, min_conf: float = 80) -> str:

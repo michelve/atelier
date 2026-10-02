@@ -63,8 +63,7 @@ Write-Ok "refkit torch: $vt"
 if ($SkipModels) { Write-Skip 'models (-SkipModels)' }
 else {
     Write-Step 'Models (resumable)'
-    $extra = $ComfyExtraModels | ForEach-Object { '--extra'; $_ }
-    & $VenvPy "$Templates\fetch-comfy-models.py" --comfy $ComfyDir --dest "$StudioRoot\models" @ComfyTemplates @extra
+    & $VenvPy "$Templates\fetch-comfy-models.py" --comfy $ComfyDir --dest "$StudioRoot\models" @ComfyTemplates @ComfyModelArgs
     if ($LASTEXITCODE) { Write-Warn2 'some downloads failed; re-run this script to resume' }
 
     Write-Step 'Critic / scorer weights (Hugging Face snapshots, resumable)'
@@ -72,6 +71,13 @@ else {
         $dir, $repo = $pair -split '=', 2
         & $VenvPy -c "from huggingface_hub import snapshot_download as s; s(repo_id='$repo', local_dir=r'$StudioRoot\models\$dir', max_workers=8)"
         if ($LASTEXITCODE) { Write-Warn2 "$repo failed; re-run to resume" } else { Write-Ok "$repo -> models\$dir" }
+    }
+    # The rest load through from_pretrained(cache_dir=...): fetch them into that cache now, not on first use.
+    foreach ($pair in $RefkitHfCache) {
+        $repo, $files = $pair -split '=', 2
+        $patterns = ($files -split ',' | ForEach-Object { "'$_'" }) -join ','
+        & $VenvPy -c "from huggingface_hub import snapshot_download as s; s(repo_id='$repo', cache_dir=r'$StudioRoot\models\scoring', allow_patterns=[$patterns], max_workers=8)"
+        if ($LASTEXITCODE) { Write-Warn2 "$repo failed; re-run to resume" } else { Write-Ok "$repo -> models\scoring (HF cache)" }
     }
 }
 

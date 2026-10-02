@@ -75,8 +75,20 @@ $comfyPy = "$StudioRoot\ComfyUI\python_embeded\python.exe"
 $ct = (Test-Path $comfyPy) ? (& $comfyPy -s -c "import torch; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
 Check 'visual' 'ComfyUI torch sees the GPU' ($ct -match 'True$') $ct
 $rkPy = "$StudioRoot\venvs\refkit\Scripts\python.exe"
-$rt = (Test-Path $rkPy) ? (& $rkPy -c "import torch, cv2, vtracer, trimesh, spandrel; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
+$rt = (Test-Path $rkPy) ? (& $rkPy -c "import torch, cv2, vtracer, trimesh, spandrel, bitsandbytes, peft, editscore; print(torch.__version__, torch.cuda.is_available())" 2>&1 | Out-String).Trim() : 'not installed'
 Check 'visual' 'refkit venv imports + GPU' ($rt -match 'True$') $rt
+# Local critic / scorers (vlm.py, score.py): Hugging Face snapshots + the HPSv3++ runner's own env.
+foreach ($pair in $RefkitHfModels) {
+    $dir = ($pair -split '=', 2)[0]
+    $ok = (Test-Path "$StudioRoot\models\$dir\config.json") -or (Test-Path "$StudioRoot\models\$dir\adapter_config.json")
+    Check 'visual' "weights models\$dir" $ok 'run 09-local-ai.ps1'
+}
+foreach ($pair in $RefkitHfCache) {
+    $repo = ($pair -split '=', 2)[0]
+    $ok = Test-Path "$StudioRoot\models\scoring\models--$($repo -replace '/', '--')\snapshots\*\config.json"
+    Check 'visual' "weights $repo (HF cache)" $ok 'run 09-local-ai.ps1 (else downloaded on first use)'
+}
+Check 'visual' "HPSv3++ scorer env ($HpsCommit)" (Test-Path "$StudioRoot\tools\hpsv3-4bit\.venv\Scripts\hpsv3pp-score.exe") 'run 09-local-ai.ps1 (refkit falls back to PickScore)'
 Remove-Item Env:PYTHONNOUSERSITE
 foreach ($t in $ComfyTemplates) {
     Check 'visual' "workflow $t" (Test-Path "$StudioCode\workflows\$t.api.json") 'run 09-local-ai.ps1'
@@ -84,8 +96,7 @@ foreach ($t in $ComfyTemplates) {
 if (Test-Path $rkPy) {
     # Same model list the installer downloads (read from the templates), so the check can't drift from it.
     $env:PYTHONNOUSERSITE = '1'
-    $extra = $ComfyExtraModels | ForEach-Object { '--extra'; $_ }
-    $want = & $rkPy "$Templates\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @extra |
+    $want = & $rkPy "$Templates\fetch-comfy-models.py" --comfy "$StudioRoot\ComfyUI" --dest "$StudioRoot\models" --dry-run @ComfyTemplates @ComfyModelArgs |
         Select-String '^\s+(\S+)\s+<-' | ForEach-Object { $_.Matches[0].Groups[1].Value }
     Remove-Item Env:PYTHONNOUSERSITE
     $missing = @($want | Where-Object { -not (Test-Path "$StudioRoot\models\$_") })
@@ -152,6 +163,9 @@ if ($Deep) {
         Check 'deep' 'refkit render (Cycles GPU still)' (Test-Path 'cube.refkit\poster.webp')
         refkit qa flat.refkit\vector.svg --ref flat.png *> $null
         Check 'deep' 'refkit qa' ($LASTEXITCODE -eq 0)
+        # Whole pipeline: workflows vs this ComfyUI, gen + cutout, to3d + inspect, render, local critic (~4 min).
+        refkit smoke --no-export *> $null
+        Check 'deep' 'refkit smoke (gen, cutout, to3d, render, critic)' ($LASTEXITCODE -eq 0) 'see scratch\smoke'
         $ollamaUp = try { [bool](Invoke-RestMethod http://127.0.0.1:11434/api/version -TimeoutSec 2) } catch { $false }
         if ($ollamaUp) {
             $answer = (llm -m qwen3:14b 'Reply with exactly: OK /no_think' 2>&1 | Out-String).Trim() -replace '\s+', ' '

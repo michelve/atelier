@@ -144,7 +144,10 @@ for f in sorted((STUDIO_ROOT / "models").rglob("*")):
     if f.suffix in (".safetensors", ".pth", ".gguf", ".ckpt", ".bin") and f.is_file():
         size = f.stat().st_size
         total += size
-        model_rows.append(f"| `{f.parent.name}` | `{f.name}` | {size / 1e9:.2f} GB |")
+        # Hugging Face cache entries (models--org--name/snapshots/<hash>/...) are named by repo, not by hash.
+        repo = next((p.name for p in f.parents if p.name.startswith("models--")), None)
+        where = repo.removeprefix("models--").replace("--", "/") if repo else f.parent.name
+        model_rows.append(f"| `{where}` | `{f.name}` | {size / 1e9:.2f} GB |")
 
 skills = sorted(p.name for p in (REPO / "claude" / "skills").iterdir() if (p / "SKILL.md").exists())
 

@@ -81,8 +81,6 @@ def generate(images: list, prompt: str, max_new_tokens: int = 384, temperature: 
             with model.disable_adapter():
                 out = model.generate(**inputs, **kw)
         else:
-            if lora and not _has_lora:
-                raise RefkitError(f"refkit: EditScore LoRA not installed ({EDITSCORE_LORA})")
             out = model.generate(**inputs, **kw)
     text = proc.batch_decode(out[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
     return text.strip()
@@ -106,12 +104,11 @@ class _EditScoreBackend:
 
 def editscore():
     """An editscore.EditScore evaluator wired to the shared model: .evaluate([source, result], instruction)."""
-    from editscore import EditScore
+    from editscore import EditScore, vie_prompts
     load()
     if not _has_lora:
         raise RefkitError(f"refkit: EditScore LoRA not installed ({EDITSCORE_LORA})")
     ev = EditScore.__new__(EditScore)   # skip its own (bf16, ~17 GB) model loading
-    from editscore import vie_prompts
     ev.backbone, ev.score_range, ev.reduction, ev.seed, ev.num_pass = "qwen3vl", 25, "average_last", 42, 1
     ev.model = _EditScoreBackend()
     ev.context = vie_prompts._context_no_delimit_reasoning_first

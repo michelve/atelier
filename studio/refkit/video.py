@@ -23,16 +23,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import comfy, gpu, meta, prompting
-from .common import REPO, RefkitError, log, run, safe_name
+from . import comfy, gen, gpu, meta, prompting
+from .common import REPO, RefkitError, log, open_image, run, safe_name
 
 NANOBANANA = REPO / "nanobanana.py"
 MODELS = {"omni": "omni", "veo": "veo", "veo-fast": "veo-fast", "veo-lite": "veo-lite"}
 LOCAL = {"wan": "video_wan2_2_5B_ti2v", "wan-fast": "video_wan2_2_14B_i2v"}
-
-
-def _title(n: dict) -> str:
-    return n.get("_meta", {}).get("title", "")
 
 
 def local(args, out: Path, seed: int) -> Path:
@@ -44,16 +40,15 @@ def local(args, out: Path, seed: int) -> Path:
         raise RefkitError("refkit: -m wan-fast animates a keyframe: pass --from IMG (or use -m wan for text-to-video)")
     portrait = (args.aspect == "9:16")
     if args.frm:
-        from .common import open_image
         w0, h0 = open_image(args.frm).size
         portrait = portrait or h0 > w0
     seconds = args.seconds or 5
     gpu.free_vram(keep="comfy")
     comfy.ensure_running()
+    wf = comfy.load_workflow(LOCAL[model] + ".api")
+    comfy.patch(wf, lambda n: n["class_type"] == "CLIPTextEncode" and "Positive" in comfy.title(n), "text", args.prompt)
     if model == "wan":
         w, h = (704, 1280) if portrait else (1280, 704)
-        wf = comfy.load_workflow(LOCAL[model] + ".api")
-        comfy.patch(wf, lambda n: n["class_type"] == "CLIPTextEncode" and "Positive" in _title(n), "text", args.prompt)
         lat = next(k for k, n in wf.items() if n["class_type"] == "Wan22ImageToVideoLatent")
         wf[lat]["inputs"].update(width=w, height=h, length=int(seconds * 24) + 1)
         if args.frm:
@@ -63,18 +58,13 @@ def local(args, out: Path, seed: int) -> Path:
             wf[lat]["inputs"]["start_image"] = ["key_fit", 0]
     else:
         w, h = (480, 832) if portrait else (832, 480)
-        wf = comfy.load_workflow(LOCAL[model] + ".api")
         comfy.patch(wf, "LoadImage", "image", comfy.upload(Path(args.frm).resolve()))
-        comfy.patch(wf, lambda n: n["class_type"] == "CLIPTextEncode" and "Positive" in _title(n), "text", args.prompt)
-        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "4steps" in _title(n), "value", True)
+        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveBoolean" and "4steps" in comfy.title(n), "value", True)
         comfy.patch(wf, "WanImageToVideo", "width", w)
         comfy.patch(wf, "WanImageToVideo", "height", h)
-        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveFloat" and "Duration" in _title(n), "value",
+        comfy.patch(wf, lambda n: n["class_type"] == "PrimitiveFloat" and "Duration" in comfy.title(n), "value",
                     float(seconds))
-    for n in wf.values():
-        for key in ("seed", "noise_seed"):
-            if key in n["inputs"] and not isinstance(n["inputs"][key], list) and n["inputs"].get("add_noise") != "disable":
-                n["inputs"][key] = seed
+    gen.seed_all(wf, seed)
     comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", "refkit/video-local", expect=None)
     items = [i for i in comfy.queue(wf, timeout=3600) if str(i.get("filename", "")).lower().endswith((".mp4", ".webm"))]
     if not items:
@@ -109,6 +99,13 @@ def generate(args, out: Path) -> Path:
     if res.returncode or not out.exists():
         raise RefkitError(f"refkit: video generation did not run: {(res.stderr or res.stdout)[-1500:]}")
     return out
+
+
+def record_cloud(clip: Path, args) -> dict:
+    """Sidecar for a paid Google clip, merged into the JSON nanobanana.py writes (its interaction_id is kept)."""
+    refs = [Path(p) for p in [args.frm, args.to, *args.ref] if p]
+    return meta.record(clip, "video", model=args.model or "omni", prompt=args.prompt, paid=True, res=args.res,
+                       seconds=args.seconds, aspect=args.aspect, inputs=refs or None)
 
 
 def _video_nodes(wf: dict, clip: str) -> None:
@@ -186,6 +183,7 @@ def main(args) -> Path:
                         workflow=LOCAL[args.model], inputs=[Path(args.frm)] if args.frm else None)
         else:
             clip = generate(args, name)
+            record_cloud(clip, args)
         log(f"clip -> {clip}")
     final = finish(clip, dest, args.upscale, args.interp)
     log(f"final {final}")

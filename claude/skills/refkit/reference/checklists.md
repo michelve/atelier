@@ -45,8 +45,9 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
 - [ ] Trimmed to content with consistent padding (`magick cut.png -trim -bordercolor none -border 24 out.png`).
 
 ## 3D / GLB
-- [ ] Silhouette matches the reference: `inspect/views.png` 0 deg view is the photo's view for Pixal3D (camera
-      frame, before levelling — compare with `<model>-raw.glb` or `--no-level`).
+- [ ] Silhouette matches the reference: each Pixal3D run has `fidelity/views/beauty_000.png` (the photo's own
+      viewpoint, rendered from the camera-frame mesh) and its score in model.json (silhouette ~0.97+ is sound;
+      a broken mesh scored 0.69). It sees only the front: check the back in the clay row.
 - [ ] Clay row clean from every angle: no holes, lumps, melted or staircase areas, no shredded/floating parts
       (qa FAILs >3% non-manifold edges, missing UVs, NaN/degenerate faces); stands upright on its base.
 - [ ] Clean topology after cleanup: no floating islands, normals outward; textured meshes keep the normals they
@@ -69,8 +70,11 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
 - [ ] Motion pacing and easing match the brief/reference; respects `prefers-reduced-motion`, pauses offscreen.
 - [ ] File sizes sane for autoplay (hero loop < 2-3 MB); resolution matches display size ×2 at most.
 
-## Generated video (Omni / Veo)
-- [ ] Keyframes made locally and approved before paying for motion; cost estimate shown, spend reported.
+## Generated video (local Wan / Omni / Veo)
+- [ ] Keyframes made locally and approved before animating; for Omni/Veo the cost estimate was shown and the spend
+      is reported (paid calls are never used as tests).
+- [ ] Wan: smooth enough for the slot (wan-fast is 16 fps, so use `--interp 2`); the first frame still matches
+      the keyframe; nothing melts or morphs at the end.
 - [ ] Motion matches the brief (one clear camera move, no unwanted cuts, no morphing at the end of the clip).
 - [ ] On-screen text/logos stay legible and stable through the clip (generators garble text in motion).
 - [ ] Upscaled/interpolated output compared frame by frame with the source (SeedVR2 can invent texture).
@@ -83,6 +87,8 @@ Each item is a thing that separates "generated" from "production". `refkit qa` a
 
 ## Handoff
 - [ ] List every deliverable with path, dimensions/format, size, and the qa result.
+- [ ] Scores, the critic and fidelity were treated as a pre-sort: you looked at the picks (and 3D backs)
+      yourself.
 - [ ] Note seeds / prompts / settings used (every refkit output has a `.json` sidecar with model, licence, seed,
       prompt and input hashes; `refkit runs` lists recent ones; Omni clips store the interaction id for edits) so the
       piece can be regenerated or extended.

@@ -39,14 +39,20 @@ def sheet(views_dir: Path, azimuths: list[int], dest: Path) -> Path:
 
 
 def render_views(model: Path, dest: Path, **opts) -> dict:
-    """Run blender/views.py; opts map to its flags (views, azimuths, elev, fov, fill, modes, res)."""
+    """Run blender/views.py; opts map to its flags (views, azimuths, elev, fov, rig, modes, res).
+    True becomes a bare switch; None/False are left out (0 is passed: elev=0 is a real value)."""
     model = Path(model).resolve()
     if not model.exists():
         raise RefkitError(f"refkit: no such file: {model}")
+    dest = Path(dest).resolve()   # Blender resolves relative paths against its own working folder
     dest.mkdir(parents=True, exist_ok=True)
     gpu.free_vram()   # Cycles needs the VRAM ComfyUI may be holding
-    flags = [x for k, v in opts.items() if v is not None and v is not False
-             for x in ((f"--{k}",) if v is True else (f"--{k}", v))]
+    flags = []
+    for k, v in opts.items():
+        if v is True:
+            flags.append(f"--{k}")
+        elif v is not None and v is not False:
+            flags += [f"--{k}", v]
     blender("views.py", "--input", model, "--out", dest, *flags)
     return json.loads((dest / "stats.json").read_text(encoding="utf-8"))
 

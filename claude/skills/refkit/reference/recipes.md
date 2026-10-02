@@ -38,8 +38,11 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
    no cast shadow" -m z-image -n 4 --pick` → cutout. `refkit analyze` flags good inputs (`3d_candidate`).
 2. `refkit to3d ref.refkit/cutout.png -n 3` (Pixal3D, textured; a cutout's alpha is used as the mask, so
    `cutout --prompt "the left cup"` then to3d builds that cup). Each seed gets its own folder with
-   `inspect/views.png` (textured row over clay row) and all of them go into `compare.png` — look at the clay row
-   for holes, lumps and melted edges, pick the seed. `--auto` lets the local critic pre-rank them (`report.md`).
+   `inspect/views.png` (textured row over clay row) and all of them go into `compare.png`, sorted by fidelity —
+   the photo's own viewpoint rendered from the mesh vs the cutout (silhouette IoU, DINO). It catches broken shapes
+   and front mismatches (a broken mesh scored 0.69 vs 0.97) but cannot see the back: look at the clay row for holes,
+   lumps and melted edges on every side, then pick the seed. `--auto` writes `report.md` with the scores and the
+   local critic's notes. Budget ~2 min per seed (mesh ~75 s, then cleanup, inspect and fidelity).
    - Boxy hard-surface objects (devices, furniture, buildings): `--hard-edges` gives crisp creases, but curved parts
      (lens barrels, knobs) turn visibly faceted — compare with a default run (`-n` / two runs) before keeping it.
    - `--quality high` (shape cascade 1536): a little more fine detail on detailed objects, lumpier smooth surfaces,
@@ -85,6 +88,20 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
   check tiling: `magick tex.png ( +clone ) +append ( +clone ) -append tile-check.png`; fix seams with offset +
   clone (`magick tex.png -roll +512+512 rolled.png`) and re-generate/inpaint the seam area.
 
+## Local video clip (free, Wan 2.2)
+1. Keyframe first: `refkit gen` the opening frame at the clip's shape (landscape 1280x704 or portrait 704x1280).
+   Get it right before animating, since motion won't fix a weak frame. View it.
+2. Draft the motion: `refkit video "steam rises slowly from the cup, the camera holds still" -m wan-fast --from
+   key.png` (14B + 4-step LoRA, 480p, 16 fps, ~75 s for 5 s). Describe only the motion and one camera move;
+   the frame already shows the scene.
+3. Final: `-m wan` (5B, 720p, 24 fps, ~3.5 min for 5 s; 5 s is the tested length, `--seconds` to change it).
+   Without `--from` it is text-to-video. For a like-for-like retry, reuse the seed with `--seed` (it's in the
+   sidecar).
+4. Finish: `--upscale` (SeedVR2) and/or `--interp 2` (FILM; makes wan-fast's 16 fps smooth). Compare a frame
+   with the source: SeedVR2 can invent texture.
+5. Limits: first+last frame (`--to`) and extension are Google-only. Text and logos smear in motion, so add them
+   in post. qa the MP4.
+
 ## Generated video clip (Google, paid: show the estimate)
 1. Keyframes locally: `refkit gen` the first frame (and a last frame via a `gen ... -i first.png` edit) at the
    clip's aspect (1280x720 / 720x1280).
@@ -99,15 +116,23 @@ Outputs default to `<input>.refkit/`. Replace paths as needed. Always finish wit
 
 ## Troubleshooting
 - `refkit status` first. ComfyUI down → it auto-starts; log at `<engine>\comfyui.log`; manual: `comfy`.
+- A job takes far longer than the time budget in SKILL.md → `refkit status`: other sessions' jobs share the
+  queue (`jobs: N running, M queued`), and switching models between their jobs and yours reloads weights. Wait;
+  never kill ComfyUI while jobs run.
 - CUDA OOM → close other GPU apps (games, Ollama models: `ollama stop <m>`), retry; to3d already uses 1024
   upsample + 2048 textures; fall back to `-m hunyuan3d`.
 - Embedded ComfyUI Python must run with `PYTHONNOUSERSITE=1` (legacy user site has a CPU torch) — shims do it.
 - SAM 3 finds one instance → it needs `concept:N`; refkit adds `:50` automatically; lower `--threshold`.
 - f3d can't open meshopt GLBs (thumbnail uses the pre-compression mesh); Blender can.
-- After a ComfyUI update: `refkit smoke` (re-exports when the templates changed, validates every workflow, runs
-  a tiny gen + cutout); `refkit smoke --force-export` to re-export anyway.
+- After a ComfyUI update: `refkit smoke`. It restarts our server onto the new version if the old one is still
+  running and idle; it fails with a message rather than interrupt anyone's jobs. Then it re-exports when the
+  templates changed, validates every workflow, and runs gen + cutout + to3d + render + one critic call.
+  `refkit smoke --force-export` re-exports anyway; `--quick` skips the 3D/render/critic part.
+- Is anything out of date? `<repo>\setup\update-tools.ps1 -Part User -Check` (and `-Part Admin -Check`) lists
+  what is behind and installs nothing.
 - "workflow patch ... matched 0 node(s)" = a template changed shape; re-export, then fix the patch in refkit.
 - Two ComfyUIs on one GPU: refkit reuses whatever of ours runs on 8188-8195 (incl. Comfy Desktop); close extras.
 - Slow after an update: `refkit bench`, compare with the numbers in `~\.local\bin\comfy.cmd`'s comment.
 - Nano Banana / Omni / Veo says "paid call not run": it needs `--yes` after you have shown the cost estimate.
-- Reinstall / verify everything: `<repo>\setup\08-visual-tools.ps1`, `09-local-ai.ps1`, `90-check.ps1 -Deep`.
+- Reinstall / verify everything: `<repo>\setup\08-visual-tools.ps1`, `09-local-ai.ps1` (ComfyUI models, critic/
+  scorer weights, the DINOv2/PickScore cache, the HPSv3++ env), `90-check.ps1 -Deep`.

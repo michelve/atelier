@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -118,6 +119,53 @@ def ensure_running(timeout: int = 180) -> str:
     raise RefkitError(f"refkit: ComfyUI did not come up on {base}; see {STUDIO_ROOT / 'comfyui.log'}")
 
 
+def _pids_on(port: int) -> set[int]:
+    out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True).stdout
+    return {int(m.group(1)) for m in re.finditer(rf"127\.0\.0\.1:{port}\s+\S+\s+LISTENING\s+(\d+)", out)}
+
+
+def stop() -> None:
+    """Stop our server(s): tree-kill whatever listens on its port."""
+    global _url
+    while (base := find()):
+        for pid in _pids_on(int(base.rsplit(":", 1)[1])):
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
+        _url = None
+        time.sleep(2)
+
+
+def jobs(base: str) -> tuple[int, int]:
+    """(running, queued) on a server; other Claude sessions share it, so a restart would kill their jobs."""
+    q = requests.get(f"{base}/queue", timeout=5).json()
+    return len(q.get("queue_running", [])), len(q.get("queue_pending", []))
+
+
+def installed_version() -> str | None:
+    """The ComfyUI version on disk, i.e. what a (re)start runs."""
+    f = COMFY_DIR / "ComfyUI" / "comfyui_version.py"
+    m = re.search(r'__version__\s*=\s*"([^"]+)"', f.read_text(encoding="utf-8")) if f.exists() else None
+    return m.group(1) if m else None
+
+
+def ensure_current() -> str:
+    """ensure_running(), restarting our server if it still runs an older ComfyUI than the one on disk: an update
+    replaces the code, not the running process, so smoke would otherwise validate the old version. A busy server
+    (another session's jobs) or Comfy Desktop's is never restarted from here; that is an error instead."""
+    base = ensure_running()
+    system = (_stats(base) or {}).get("system", {})
+    have, want = system.get("comfyui_version"), installed_version()
+    if not want or have == want:
+        return base
+    if any(jobs(base)):
+        raise RefkitError(f"refkit: ComfyUI {have} is running but {want} is installed, and it is busy; "
+                          "run this again when its jobs are done")
+    if (system.get("argv") or [""])[0].replace("/", "\\").lower() != "comfyui\\main.py":
+        raise RefkitError(f"refkit: Comfy Desktop's server runs ComfyUI {have}, {want} is installed: restart Comfy Desktop")
+    log(f"restarting ComfyUI: {have} is running, {want} is installed")
+    stop()
+    return ensure_running()
+
+
 def upload(image: Path) -> str:
     """Upload under a content-hash name so concurrent runs (or Comfy Desktop) never overwrite each other's inputs."""
     data = Path(image).read_bytes()
@@ -148,6 +196,17 @@ def add_lora(wf: dict, lora_name: str, strength: float = 1.0) -> str:
     wf[key] = {"class_type": "LoraLoaderModelOnly", "inputs": {"model": src, "lora_name": lora_name,
                                                                 "strength_model": strength}}
     return key
+
+
+def title(n: dict) -> str:
+    return n.get("_meta", {}).get("title", "")
+
+
+def drop_ui(wf: dict, *class_types: str) -> None:
+    """Remove UI-only nodes (previews/compares) nothing else reads from."""
+    referenced = {v[0] for n in wf.values() for v in n["inputs"].values() if isinstance(v, list) and len(v) == 2}
+    for k in [k for k, n in wf.items() if n["class_type"] in class_types and k not in referenced]:
+        del wf[k]
 
 
 def prune(wf: dict) -> dict:
@@ -201,9 +260,16 @@ def patch(wf: dict, match, key: str, value, expect: int | None = 1) -> int:
     return len(hits)
 
 
+_object_info: dict[str, dict] = {}   # per server URL, fetched once per process
+
+
 def validate(wf: dict) -> list[str]:
-    """Unknown node classes / input names against the running server's /object_info."""
-    info = requests.get(f"{url()}/object_info", timeout=60).json()
+    """Unknown node classes / input names against the running server's /object_info. (ComfyUI itself also checks
+    input *values* such as LoadImage files at submit time; this catches refkit patches that miss after an update.)"""
+    base = url()
+    if base not in _object_info:
+        _object_info[base] = requests.get(f"{base}/object_info", timeout=60).json()
+    info = _object_info[base]
     problems = []
     for nid, n in wf.items():
         spec = info.get(n["class_type"])
@@ -238,9 +304,22 @@ def queue(wf: dict, timeout: int = 1800) -> list[dict]:
     return wait(submit(wf), timeout)
 
 
+def first_output(wf: dict, dest: Path, error: str, timeout: int = 1800) -> Path:
+    """Queue wf and fetch its first saved output into dest; `error` (after "refkit: ") if it saved nothing."""
+    items = [i for i in queue(wf, timeout) if i.get("type") == "output"]
+    if not items:
+        raise RefkitError(f"refkit: {error}")
+    return fetch(items[0], dest)
+
+
 def submit(wf: dict) -> str:
-    """Queue a workflow; returns its prompt_id. Partial validation failures count as failures."""
+    """Queue a workflow; returns its prompt_id. Checked against the server's node definitions first; partial
+    validation failures on the server count as failures too."""
     base = url()
+    problems = validate(wf)
+    if problems:
+        raise RefkitError("refkit: workflow doesn't match this ComfyUI (re-export it, or fix the patch):\n  "
+                          + "\n  ".join(problems[:8]))
     try:
         r = requests.post(f"{base}/prompt", json={"prompt": wf, "client_id": uuid.uuid4().hex}, timeout=30)
     except requests.RequestException as e:
@@ -255,12 +334,37 @@ def submit(wf: dict) -> str:
     return body["prompt_id"]
 
 
+TEXTS: dict[str, list[str]] = {}   # text a finished job showed in its UI (e.g. the prompt an enhancer wrote)
+
+
+def _job_state(base: str, prompt_id: str) -> str | None:
+    """pending / in_progress / completed / failed / cancelled from the Jobs API; None on servers without it."""
+    r = requests.get(f"{base}/api/jobs/{prompt_id}", timeout=10)
+    if r.status_code == 404 and "Job not found" not in r.text:
+        return None   # no Jobs API (older ComfyUI)
+    if r.status_code == 404:
+        return "pending"   # just submitted, not visible yet
+    job = r.json()
+    if job.get("status") == "failed" and job.get("execution_error"):
+        err = job["execution_error"]
+        raise RefkitError(f"refkit: ComfyUI job failed in {err.get('node_type', '?')} (node {err.get('node_id', '?')}): "
+                          f"{str(err.get('exception_message', err))[:2000]}")
+    if job.get("status") == "cancelled":
+        raise RefkitError("refkit: the ComfyUI job was cancelled")
+    return job.get("status")
+
+
 def wait(prompt_id: str, timeout: int = 1800) -> list[dict]:
+    """Follow a job (Jobs API status; /history for its outputs, or for everything on older servers)."""
     base = url()
     t = time.time()
     try:
         while time.time() - t < timeout:
             try:
+                state = _job_state(base, prompt_id)
+                if state in ("pending", "in_progress"):
+                    time.sleep(1)
+                    continue
                 h = requests.get(f"{base}/history/{prompt_id}", timeout=10).json().get(prompt_id)
             except requests.RequestException as e:
                 raise RefkitError(f"refkit: lost connection to ComfyUI ({e}); was it closed?") from None
@@ -269,6 +373,8 @@ def wait(prompt_id: str, timeout: int = 1800) -> list[dict]:
                 if status.get("status_str") == "error" or not status.get("completed", True):
                     msgs = [m for m in status.get("messages", []) if m[0] in ("execution_error", "execution_interrupted")]
                     raise RefkitError(f"refkit: ComfyUI job failed: {json.dumps(msgs)[:2500]}")
+                TEXTS[prompt_id] = [t for o in h.get("outputs", {}).values() for t in (o.get("text") or [])
+                                    if isinstance(t, str)]
                 return _outputs(h)
             time.sleep(1)
     except KeyboardInterrupt:

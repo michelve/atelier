@@ -33,7 +33,7 @@ def _argv(job: dict, spec: dict, dest: Path, done: dict) -> list[str]:
     if kind == "to3d":
         src = GOLDEN / spec["inputs"][job["input"]]["file"]
         return ["to3d", str(src), "--seed", str(job["seed"]), "--out", str(dest),
-                *(["--hard-edges"] if job.get("hard_edges") else []), *job.get("args", [])]
+                *(["--hard-edges"] if job.get("hard_edges") else [])]
     if kind == "upscale":
         src = done.get(job["from"])
         if not src:
@@ -47,10 +47,8 @@ def _preview(kind: str, result) -> Path | None:
     if kind == "to3d":
         run = result["runs"][0]
         return Path(run["sheet"]) if run.get("sheet") else Path(run["thumbnail"])
-    if isinstance(result, dict):
-        outs = result.get("outputs") or []
-        return Path(outs[0]) if outs else None
-    return Path(result) if result else None
+    outs = result.get("outputs") or []
+    return Path(outs[0]) if outs else None
 
 
 def _tile(path: Path | None, label: str, font) -> Image.Image:

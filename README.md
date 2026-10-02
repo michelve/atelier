@@ -41,7 +41,7 @@ from code (Cycles), then the landing page around them.
 | You give it | You get | How |
 |---|---|---|
 | A logo, icon or screenshot | A clean, palette-exact SVG | trace → snap to exact hex → optimise → SSIM-scored against the reference |
-| A brief or a reference | Product shots, posters, typography, UI art | Qwen-Image 2.1 / Krea 2 / Z-Image, best-of-N ranked, SeedVR2 upscale |
+| A brief or a reference | Product shots, posters, typography, UI art | Qwen-Image 2.1 / Krea 2 / HiDream-O1 / Ming / Z-Image, best-of-N ranked, SeedVR2 upscale |
 | One or more reference images | Edits and composites that keep everything else intact | Qwen-Image 2.1 Edit (multi-reference), FLUX.2 klein |
 | A photo | A cutout with clean edges, even on fur and glass | BiRefNet, SAM 3.1 ("the left cup"), Qwen matting |
 | A photo or a turnaround | A textured, web-ready 3D model + studio turntable | Pixal3D (several seeds, optional multi-view refinement) → Blender cleanup, levelled on its base → meshopt/KTX2 → inspection sheet → Cycles render |
@@ -172,8 +172,9 @@ refkit status; refkit smoke          # in a new terminal
 ```
 
 Weekly updates: `setup\06-schedule.ps1` from an elevated shell. It schedules `setup\update-tools.ps1`, which
-updates ComfyUI to the latest stable release, runs `refkit smoke` and refreshes `REQUIREMENTS.md`. Set
-`ATELIER_REPOS` to a folder of git repos to get a weekly fetch report too.
+updates refkit's Python packages and ComfyUI (latest stable), runs `refkit smoke` over both, and refreshes
+`REQUIREMENTS.md`. Run `setup\update-tools.ps1 -Part User -Check` (or `-Part Admin -Check`) to see what is behind
+without installing anything. Set `ATELIER_REPOS` to a folder of git repos to get a weekly fetch report too.
 </details>
 
 `setup\00`–`07` are an optional, opinionated Windows dev-environment bootstrap (shell, fonts, document tools,

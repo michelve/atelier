@@ -12,7 +12,6 @@ switch: catches the int8 ConvRot reload stall, comfy-kitchen #196). Outputs are 
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import threading
 import time
@@ -22,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 from . import comfy, gen, to3d
-from .common import SCRATCH, STUDIO_ROOT, log, say
+from .common import SCRATCH, STUDIO_ROOT, RefkitError, log, say
 
 # Launch flags are compared with refkit's per-workflow Comfy Kitchen node switched off (it would otherwise run in every
 # set); "kitchen-node" is the baseline flags with the node on, i.e. what refkit actually runs.
@@ -65,22 +64,8 @@ class VramPeak:
         self._t.join(2)
 
 
-def _pids_on(port: int) -> set[int]:
-    out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True).stdout
-    return {int(m.group(1)) for m in re.finditer(rf"127\.0\.0\.1:{port}\s+\S+\s+LISTENING\s+(\d+)", out)}
-
-
-def stop_ours() -> None:
-    while (base := comfy.find()):
-        port = int(base.rsplit(":", 1)[1])
-        for pid in _pids_on(port):
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
-        comfy._url = None
-        time.sleep(2)
-
-
 def start(flags: str, timeout: int = 240) -> subprocess.Popen:
-    stop_ours()
+    comfy.stop()
     cmd = [str(Path.home() / ".local" / "bin" / "comfy.cmd"), "--port", "8188", *flags.split()]
     logf = open(STUDIO_ROOT / "comfyui.log", "ab")
     proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
@@ -151,6 +136,10 @@ def main(args) -> dict | None:
     if args.golden:
         from . import golden
         return golden.run(args)
+    # Flag A/B restarts ComfyUI per set: never while another session's jobs run on it.
+    if (base := comfy.find()) and any(comfy.jobs(base)):
+        raise RefkitError("refkit: ComfyUI has jobs running or queued (another session?); bench restarts the "
+                          "server, so run it when `refkit status` shows 0 jobs")
     sets = [tuple(s.split("=", 1)) for s in args.set] if args.set else DEFAULT_SETS
     if sets[0][0] != "baseline":
         sets = [("baseline", ""), *sets]
@@ -166,7 +155,7 @@ def main(args) -> dict | None:
         results.append(r)
         log(json.dumps(r))
         (OUT / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
-    stop_ours()
+    comfy.stop()
     cols = ["startup_s", "zimage_cold_s", "zimage_warm_s", "klein_s", "zimage_after_switch_s", "pixal3d_s", "peak_vram_mb"]
     say("\n" + f"{'set':10s} " + " ".join(f"{c.removesuffix('_s'):>14s}" for c in cols) + "   drift(z/klein)")
     for r in results:

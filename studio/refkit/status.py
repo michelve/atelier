@@ -47,6 +47,11 @@ def main() -> None:
         name = dev["name"].split(" : ")[0].split(" ", 1)[-1]
         say(f"  ComfyUI {s['system']['comfyui_version']} up at {base}, {name}, "
               f"VRAM free {dev['vram_free'] / 1e9:.1f}/{dev['vram_total'] / 1e9:.1f} GB")
+        # Other Claude sessions share this server: their jobs queue with yours, and a restart would kill them.
+        running, queued = comfy.jobs(base)
+        say(f"  jobs: {running} running, {queued} queued")
+        if (want := comfy.installed_version()) and want != s["system"]["comfyui_version"]:
+            say(f"  ComfyUI {want} is installed but not running yet: `refkit smoke` restarts it when no jobs run")
     else:
         say("  ComfyUI down (starts automatically when needed; or run `comfy` / Comfy Desktop)")
     try:

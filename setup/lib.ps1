@@ -59,28 +59,45 @@ $ComfyTemplates = @(
     # added 2026-10-01 (upgrade): HiDream-O1 Dev (MIT photoreal + edit), Marigold V2 albedo (to3d --delight)
     'image_hidream_o1_dev', 'image_marigold_v2_albedo_estimation',
     # local video (refkit video -m wan / wan-fast; Apache-2.0)
-    'video_wan2_2_5B_ti2v', 'video_wan2_2_14B_i2v'
+    'video_wan2_2_5B_ti2v', 'video_wan2_2_14B_i2v',
+    # Ming design model (posters, UI); its 27B prompt rewriter is not used
+    'image_ming_image_01_design_t2i'
 )
 $ComfyExtraModels = @(
     'upscale_models=https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors',
+    # MoGe 3 for the field-of-view estimate inside to3d's Pixal3D graph (measured better than the template's MoGe 2)
+    'geometry_estimation=https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_3_vitg_fp16.safetensors',
     # Qwen-Image 2.1 LoRAs: AnyAngle (Apache-2.0; to3d --refine-views), Consistency (qwen-research; gen --consistent, fix)
     'loras=https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors',
     'loras=https://huggingface.co/ausboss/Qwen-Image-2.1-Consistency-LoRA/resolve/main/qwen-image-2.1-consistency.safetensors'
 )
+# Files a template lists that refkit never loads: Ming's 27B prompt rewriter (gen -m ming uses the prompt as written).
+$ComfySkipModels = @('qwen3.8_27b_w4a8.safetensors')
+# fetch-comfy-models.py arguments for both the installer (09) and the check (90), so the check can't drift from it.
+$ComfyModelArgs = @($ComfyExtraModels | ForEach-Object { '--extra'; $_ }) + @($ComfySkipModels | ForEach-Object { '--skip'; $_ })
 # Hugging Face snapshots for refkit's own Python (not ComfyUI): local critic + edit scorer (vlm.py), HPSv3++ (score.py).
 $RefkitHfModels = @(
     'vlm\Qwen3-VL-8B-Instruct=Qwen/Qwen3-VL-8B-Instruct',
     'scoring\EditScore-Qwen3-VL-8B-Instruct=EditScore/EditScore-Qwen3-VL-8B-Instruct',
     'scoring\HPSv3-PlusPlus-bnb-NF4=stella221125/HPSv3-PlusPlus-bnb-NF4'
 )
+# Hugging Face cache entries refkit loads with from_pretrained(cache_dir=<engine>\models\scoring): DINOv2 for to3d's
+# fidelity score, PickScore + its CLIP processor for ranking when HPSv3++ is missing. 'repo=files' (only what loads).
+$RefkitHfCache = @(
+    'facebook/dinov2-base=config.json,preprocessor_config.json,model.safetensors',
+    'yuvalkirstain/PickScore_v1=config.json,model.safetensors',
+    'laion/CLIP-ViT-H-14-laion2B-s32B-b79K=*.json,*.txt'
+)
 # HPSv3++ runner (MIT) in its own uv env under <engine>\tools: it pins transformers <5.18, refkit's venv is newer.
 $HpsRepo = 'https://github.com/Stella2211/hpsv3-4bit'
 $HpsCommit = 'a4c8dc5'
-# transformers: PickScore ranking; bitsandbytes/accelerate/peft/qwen-vl-utils/editscore: the 4-bit Qwen3-VL critic
-# and EditScore (vlm.py). Weights live in <engine>\models\scoring and \vlm.
+# Direct dependencies only. transformers: DINOv2 fidelity, PickScore fallback, Qwen3-VL; bitsandbytes/accelerate/peft/
+# editscore: the 4-bit Qwen3-VL critic and EditScore (vlm.py; editscore brings qwen-vl-utils). spandrel: vectorize's
+# pre-upscale. open3d: not imported by refkit, kept for ad-hoc mesh work in sessions (tools.md). Weights live in
+# <engine>\models\scoring and \vlm.
 $RefkitPackages = @('opencv-python-headless', 'scikit-image', 'vtracer', 'trimesh', 'pygltflib', 'spandrel', 'pillow',
                     'numpy', 'scipy', 'requests', 'open3d', 'google-genai<3', 'transformers',   # genai 3.0 drops video params
-                    'bitsandbytes', 'accelerate', 'peft', 'qwen-vl-utils', 'editscore')
+                    'bitsandbytes', 'accelerate', 'peft', 'editscore')
 # CUDA build for every torch install (refkit venv and ComfyUI's embedded Python). PyPI's Windows torch is CPU-only,
 # so any uv/pip call that may touch torch must name this backend. The 4080 SUPER driver (616.x) supports cu130.
 $TorchBackend = 'cu130'

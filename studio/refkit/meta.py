@@ -35,6 +35,7 @@ LICENCES = {
     "krea-style": "Krea 2 Community License (free under $1M revenue)",
     "klein-edit": "Apache-2.0",
     "hidream": "MIT (Gemma-4 text encoder: Gemma terms)",
+    "ming": "MIT (inclusionAI Ming-Image-0.1-Design)",
     "hidream-edit": "MIT (Gemma-4 text encoder: Gemma terms)",
     "banana": "Google Gemini API terms (paid, SynthID watermark)",
     "banana-pro": "Google Gemini API terms (paid, SynthID watermark)",
@@ -79,10 +80,18 @@ def versions() -> dict:
 
 
 def record(out: Path, command: str, *, inputs: list[Path] | None = None, model: str | None = None,
-           files: list[Path] | None = None, index: bool = True, **fields) -> dict:
+           files: list[Path] | None = None, **fields) -> dict:
     """Write <out>.json (sidecar) and append the run to the index. Extra keyword fields are stored as given."""
     out = Path(out)
-    rec = {"schema": SCHEMA, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "command": command, "output": str(out)}
+    rec = {}
+    side = out.with_suffix(".json")
+    if side.exists():   # merge: another writer got there first (nanobanana.py keeps Omni's interaction_id here)
+        try:
+            old = json.loads(side.read_text(encoding="utf-8"))
+            rec = old if isinstance(old, dict) else {}
+        except ValueError:
+            pass
+    rec.update({"schema": SCHEMA, "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "command": command, "output": str(out)})
     if model:
         rec["model"] = model
         rec["licence"] = LICENCES.get(model, "see reference/tools.md")
@@ -92,12 +101,11 @@ def record(out: Path, command: str, *, inputs: list[Path] | None = None, model: 
     if inputs:
         rec["inputs"] = [{"path": str(p), "sha1": file_hash(p)} for p in map(Path, inputs) if p.exists()]
     rec["versions"] = versions()
-    save_json(out.with_suffix(".json"), rec)
-    if index:
-        INDEX.parent.mkdir(parents=True, exist_ok=True)
-        with open(INDEX, "a", encoding="utf-8") as f:
-            f.write(json.dumps({k: rec[k] for k in ("time", "command", "output", "model", "seed", "prompt")
-                                if k in rec}, ensure_ascii=False) + "\n")
+    save_json(side, rec)
+    INDEX.parent.mkdir(parents=True, exist_ok=True)
+    with open(INDEX, "a", encoding="utf-8") as f:
+        f.write(json.dumps({k: rec[k] for k in ("time", "command", "output", "model", "seed", "prompt")
+                            if k in rec}, ensure_ascii=False) + "\n")
     return rec
 
 

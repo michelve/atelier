@@ -79,12 +79,8 @@ def qwen_mask(src: Path, work: Path) -> np.ndarray:
     wf = comfy.load_workflow("image_qwen_image_2_1_background_removal.api")
     comfy.patch(wf, "LoadImage", "image", comfy.upload(src))
     comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", "refkit/qwen-cut", expect=None)
-    for k in [k for k, n in wf.items() if n["class_type"] == "ImageCompare"]:
-        del wf[k]
-    items = [i for i in comfy.queue(wf) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError("refkit: Qwen background removal returned nothing")
-    p = comfy.fetch(items[0], work)
+    comfy.drop_ui(wf, "ImageCompare")
+    p = comfy.first_output(wf, work, "Qwen background removal returned nothing")
     rgba = open_image(p).convert("RGBA")
     p.unlink()
     return np.array(rgba)[..., 3]
@@ -101,10 +97,8 @@ def get_mask(src: Path, prompt: str | None, engine: str, threshold: float, work:
         if prompt:
             raise RefkitError("refkit: --engine qwen removes the background of the whole image; use SAM (--prompt) to pick objects")
         return qwen_mask(src, work)
-    items = [i for i in comfy.queue(mask_workflow(comfy.upload(src), prompt, threshold, max_det)) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError("refkit: segmentation returned nothing (try a different --prompt or lower --threshold)")
-    m = comfy.fetch(items[0], work)
+    m = comfy.first_output(mask_workflow(comfy.upload(src), prompt, threshold, max_det), work,
+                           "segmentation returned nothing (try a different --prompt or lower --threshold)")
     mask = np.array(Image.open(m).convert("L"))
     m.unlink()
     return mask

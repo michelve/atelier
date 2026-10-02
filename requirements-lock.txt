@@ -1,9 +1,12 @@
 # Exact refkit venv state (uv pip freeze). Generated - do not edit.
+accelerate==1.15.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
 asttokens==3.0.2
 attrs==26.1.0
+av==19.0.0
+bitsandbytes==0.50.2
 blinker==1.9.0
 certifi==2026.7.22
 cffi==2.1.1
@@ -17,6 +20,7 @@ dash==4.4.1
 dataclasses-json==0.6.7
 deprecated==3.0.0
 distro==1.9.0
+editscore==0.2
 einops==0.8.2
 executing==2.2.1
 fastjsonschema==2.22.2
@@ -40,6 +44,7 @@ itsdangerous==2.2.0
 janus==2.0.0
 jedi==0.20.0
 jinja2==3.1.6
+json-repair==0.63.5
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 jupyter-core==5.9.1
@@ -61,6 +66,7 @@ open3d==0.20.0
 opencv-python-headless==5.0.0.93
 packaging==26.3
 parso==0.8.7
+peft==0.21.2
 pillow==12.3.0
 platformdirs==4.12.1
 plotly==7.1.0
@@ -75,6 +81,7 @@ pydantic-core==2.46.5
 pygltflib==1.16.5
 pygments==2.21.0
 pyyaml==6.0.3
+qwen-vl-utils==0.0.14
 referencing==0.37.0
 regex==2026.9.29
 requests==2.34.2

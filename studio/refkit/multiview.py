@@ -21,7 +21,7 @@ from pathlib import Path
 from PIL import Image
 
 from . import comfy, gen
-from .common import RefkitError, log, open_image
+from .common import log, open_image
 
 ANYANGLE_LORA = "QI2.1_AnyAngle.safetensors"
 SIDES = {"front": 0, "left": 90, "back": 180, "right": 270}
@@ -58,10 +58,8 @@ def anyangle(original: Path, rough: Path, seed: int, dest: Path, name: str) -> P
     wf = gen.build("qwen-edit", PROMPT, [comfy.upload(original), comfy.upload(rough)], None, seed, "refkit/anyangle")
     comfy.add_lora(wf, ANYANGLE_LORA)
     comfy.patch(wf, "KSampler", "cfg", 3.0)
-    items = [i for i in comfy.queue(wf) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError(f"refkit: AnyAngle redraw of the {name} view produced nothing")
-    return comfy.fetch(items[0], dest).replace(dest / f"{name}-redrawn.png")
+    return comfy.first_output(wf, dest, f"AnyAngle redraw of the {name} view produced nothing").replace(
+        dest / f"{name}-redrawn.png")
 
 
 def reframe(cut: Path, rig: Path, out: Path) -> Path:
@@ -106,12 +104,13 @@ def side_views(src: Path, first_glb: Path, dest: Path, seed: int) -> list[Path]:
             view = rough_rgba
             log(f"{name}: using the rough render itself")
         views.append(reframe(view, rough_rgba, dest / f"{name}-rig.png"))
+    from . import critique, vlm
     try:
-        from . import critique, vlm
         check = critique.consistency(views)
-        vlm.unload()
         log("views look consistent" if check["consistent"] else f"views may disagree: {check['problems']} "
             "(look at them before trusting the multi-view mesh)")
-    except SystemExit as e:   # critic not installed: Claude looks instead
+    except (SystemExit, Exception) as e:   # not installed, driver error, OOM: Claude looks instead
         log(f"no consistency check ({e})")
+    finally:
+        vlm.unload()   # the multi-view mesh needs the VRAM next
     return views

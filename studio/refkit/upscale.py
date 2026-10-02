@@ -26,16 +26,8 @@ def refine(src: Path, dest: Path, prompt: str, denoise: float, seed: int) -> Pat
     w, h = (max(16, round(v * scale / 16) * 16) for v in im.size)
     small = dest / f"{src.stem}-refine-in.png"
     im.resize((w, h), 1).save(small)   # 1 = LANCZOS
-    wf = gen.build("z-image", prompt, [], f"{w}x{h}", seed, "refkit/refine")
-    latent = next(k for k, n in wf.items() if n["class_type"] == "EmptySD3LatentImage")
-    vae = next(n["inputs"]["vae"] for n in wf.values() if n["class_type"] == "VAEDecode")
-    wf["refine_load"] = {"class_type": "LoadImage", "inputs": {"image": comfy.upload(small)}}
-    wf[latent] = {"class_type": "VAEEncode", "inputs": {"pixels": ["refine_load", 0], "vae": vae}}
-    comfy.patch(wf, "KSampler", "denoise", denoise)
-    items = [i for i in comfy.queue(wf) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError("refkit: refine pass produced no image")
-    out = comfy.fetch(items[0], dest).replace(dest / f"{src.stem}-refined.png")
+    wf = gen.img2img(gen.build("z-image", prompt, [], f"{w}x{h}", seed, "refkit/refine"), comfy.upload(small), denoise)
+    out = comfy.first_output(wf, dest, "refine pass produced no image").replace(dest / f"{src.stem}-refined.png")
     small.unlink(missing_ok=True)
     log(f"refined at {w}x{h} (denoise {denoise}) -> {out.name}")
     return out
@@ -48,12 +40,8 @@ def upscale(src: Path, dest: Path, factor: float, model: str, seed: int) -> Path
     comfy.patch(wf, "KSampler", "seed", seed)
     comfy.patch(wf, "SeedVR2PostProcessing", "color_correction_method", "lab")   # templates ship "none" (tints)
     comfy.patch(wf, lambda n: "filename_prefix" in n["inputs"], "filename_prefix", "refkit/upscale", expect=None)
-    for k in [k for k, n in wf.items() if n["class_type"] == "ImageCompare"]:
-        del wf[k]
-    items = [i for i in comfy.queue(wf, timeout=3600) if i.get("type") == "output"]
-    if not items:
-        raise RefkitError("refkit: SeedVR2 produced no image")
-    return comfy.fetch(items[0], dest)
+    comfy.drop_ui(wf, "ImageCompare")
+    return comfy.first_output(wf, dest, "SeedVR2 produced no image", timeout=3600)
 
 
 def main(args) -> dict:

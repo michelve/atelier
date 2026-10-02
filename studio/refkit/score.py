@@ -12,14 +12,13 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from . import gpu
-from .common import MODELS, STUDIO_ROOT, log
+from .common import MODELS, STUDIO_ROOT, log, run
 
 CACHE = MODELS / "scoring"
 PROCESSOR = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
@@ -42,9 +41,8 @@ def hpsv3pp(prompt: str, images: list[Path]) -> list[float] | None:
         # (SHA-256 checked) into upstream-cache; after that it runs offline. (--local-files-only would also block
         # that one-time fetch.)
         env = {**os.environ, "PYTHONNOUSERSITE": "1"}
-        res = subprocess.run([str(exe), "--input", str(rec), "--output", str(out), "--model", str(HPS_WEIGHTS),
-                              "--source-dir", str(HPS_TOOL / "upstream-cache")],
-                             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+        res = run([exe, "--input", rec, "--output", out, "--model", HPS_WEIGHTS,
+                   "--source-dir", HPS_TOOL / "upstream-cache"], check=False, env=env)
         if res.returncode or not out.exists():
             log(f"HPSv3++ failed, using PickScore: {(res.stderr or res.stdout)[-300:]}")
             return None

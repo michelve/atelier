@@ -100,7 +100,7 @@ def deep(cut: Path) -> bool:
 
 def main(args) -> bool:
     ok = True
-    comfy.ensure_running()
+    comfy.ensure_current()   # after an update the running server may still be the old version
     if not args.no_export:
         ok &= reexport(args.force_export)
     for wf in sorted(comfy.WORKFLOWS.glob("*.api.json")):
@@ -109,10 +109,10 @@ def main(args) -> bool:
         ok &= not problems
     OUT.mkdir(parents=True, exist_ok=True)
     try:
-        class A:  # the gen CLI namespace, minimal
-            list = False; recipe = None; model = "z-image"; image = None; size = "768x768"; seed = 1; count = 1; out = str(OUT); yes = False; enhance = False
-            prompt = "a white ceramic mug on a wooden table, soft daylight, product photo"
-        img = Path(gen.main(A)["outputs"][0])
+        from . import __main__ as cli
+        img = Path(gen.main(cli.build().parse_args([
+            "gen", "a white ceramic mug on a wooden table, soft daylight, product photo", "-m", "z-image",
+            "--size", "768x768", "--seed", "1", "--out", str(OUT)]))["outputs"][0])
         cut = cutout.cut(img, OUT)
         sheet = Image.new("RGB", (1536, 768), "#808080")
         sheet.paste(Image.open(img).convert("RGB").resize((768, 768)), (0, 0))
