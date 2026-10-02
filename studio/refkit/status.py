@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 
 import requests
 
-from . import comfy
+from . import caps, comfy, host
 from .common import MODELS, OLLAMA, OUTPUT, REPO, STUDIO, STUDIO_ROOT, say
 
 TOOLS = ["blender", "magick", "inkscape", "potrace", "vtracer", "svgo", "resvg", "pngquant", "cwebp", "avifenc",
@@ -59,10 +58,8 @@ def main() -> None:
         say(f"  Ollama up (optional), loaded: {', '.join(m['name'] for m in ps) or 'none'}")
     except requests.RequestException:
         say("  Ollama down (optional, not needed by refkit)")
-    try:
-        smi = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total,utilization.gpu",
-                              "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10).stdout
-        used, total, util = (v.strip() for v in smi.split(","))
-        say(f"  GPU {used}/{total} MiB used, {util}% busy")
-    except Exception:
-        pass
+    if gpu := host.gpu_line():
+        say(f"  {gpu}")
+    say("capabilities")
+    for line in caps.summary():
+        say(f"  {line}")

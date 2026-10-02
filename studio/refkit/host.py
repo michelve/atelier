@@ -16,6 +16,8 @@ from pathlib import Path
 
 WINDOWS = os.name == "nt"
 MACOS = sys.platform == "darwin"
+# Atelier's Windows build is NVIDIA-only (the setup's system check requires it); a Mac has no CUDA.
+CUDA = WINDOWS
 # macOS: the setup saves user settings here (KEY=value lines) and sources the file from ~/.zprofile.
 ENV_FILE = Path.home() / ".config" / "atelier" / "env"
 KEYCHAIN_SERVICE = "atelier"   # macOS login Keychain: service "atelier", account = the variable name
@@ -78,6 +80,40 @@ def venv_bin(venv: Path, name: str) -> Path:
 def engine_python(comfy_dir: Path) -> Path:
     """ComfyUI's own Python: the portable build's embedded one on Windows, the engine's venv on macOS."""
     return Path(comfy_dir) / "python_embeded" / "python.exe" if WINDOWS else Path(comfy_dir) / "venv" / "bin" / "python"
+
+
+def torch_device() -> str:
+    """The torch device for refkit's own models: cuda, else Apple's mps, else cpu."""
+    import torch
+    if torch.cuda.is_available():
+        return "cuda"
+    mps = getattr(torch.backends, "mps", None)
+    return "mps" if mps is not None and mps.is_available() else "cpu"
+
+
+def empty_cache(device: str) -> None:
+    import torch
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    elif device == "mps":
+        torch.mps.empty_cache()
+
+
+def gpu_line() -> str | None:
+    """One `refkit status` line about the GPU: VRAM use on NVIDIA, chip + unified memory on a Mac."""
+    try:
+        if WINDOWS:
+            smi = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total,utilization.gpu",
+                                  "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10).stdout
+            used, total, util = (v.strip() for v in smi.split(","))
+            return f"GPU {used}/{total} MiB used, {util}% busy"
+        if MACOS:
+            def sysctl(key: str) -> str:
+                return subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, timeout=10).stdout.strip()
+            return f"GPU {sysctl('machdep.cpu.brand_string')}, {int(sysctl('hw.memsize')) / 2**30:.0f} GB unified memory"
+    except Exception:
+        return None
+    return None
 
 
 def background(new_group: bool = True) -> dict:

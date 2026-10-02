@@ -15,7 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageDraw
 
 from . import comfy, cutout, gen, host
 from .common import REPO, SCRATCH, RefkitError, log
@@ -100,7 +101,53 @@ def deep(cut: Path) -> bool:
     return ok
 
 
+def lite() -> bool:
+    """Without CUDA (a Mac): prove what runs here end to end. rembg cuts the golden mug back out of a grey backdrop
+    (alpha IoU vs the original), a flat test graphic is vectorized and passes qa, and Blender renders a still."""
+    from . import __main__ as cli
+    from .common import run
+    ok = True
+    out = OUT / "lite"
+    out.mkdir(parents=True, exist_ok=True)
+    mug = Image.open(REPO / "studio" / "tests" / "golden" / "inputs" / "mug.png").convert("RGBA")
+    photo = Image.new("RGB", mug.size, "#9a9a96")
+    photo.paste(mug, (0, 0), mug)
+    photo.save(out / "photo.png")
+    try:
+        cut = np.array(Image.open(cutout.cut(out / "photo.png", out, engine="rembg")).getchannel("A")) > 128
+        want = np.array(mug.getchannel("A")) > 128
+        iou = float((cut & want).sum() / max((cut | want).sum(), 1))
+        log(f"{'OK  ' if iou >= 0.9 else 'FAIL'} rembg cutout, alpha IoU {iou:.3f} vs the original (>= 0.9)")
+        ok &= iou >= 0.9
+    except RefkitError as e:
+        log(f"FAIL rembg cutout: {e}")
+        ok = False
+    flat = Image.new("RGB", (512, 512), "#0d0d12")
+    draw = ImageDraw.Draw(flat)
+    draw.rounded_rectangle((96, 96, 416, 416), 48, fill="#8f6bff")
+    draw.ellipse((176, 176, 336, 336), fill="#ece8ff")
+    flat.save(out / "flat.png")
+    vec = out / "flat.refkit"
+    ok &= _step("vectorize", cli.main(["vectorize", str(out / "flat.png"), "--preset", "clean", "--out", str(vec)]))
+    ok &= _step("qa (SVG vs its reference)", cli.main(["qa", str(vec / "vector.svg"), "--ref", str(out / "flat.png")]))
+    glb = out / "cube.glb"
+    run(["blender", "-b", "--factory-startup", "--python-expr",
+         f"import bpy; bpy.ops.export_scene.gltf(filepath=r'{glb}')"], check=False)
+    ok &= _step("render (Cycles still)", cli.main(["render", str(glb), "--frames", "1", "--res", "256x256",
+                                                   "--samples", "8", "--out", str(out / "render")]))
+    log(f"look at {out / 'render' / 'poster.webp'} and {vec / 'vector.svg'}")
+    log("SMOKE PASS" if ok else "SMOKE FAIL")
+    return ok
+
+
+def _step(name: str, code: int) -> bool:
+    log(f"{'OK  ' if code == 0 else 'FAIL'} {name}")
+    return code == 0
+
+
 def main(args) -> bool:
+    if not host.CUDA:
+        return lite()   # the local engine on a Mac is optional and runs no CUDA workflows; check what runs here
     ok = True
     comfy.ensure_current()   # after an update the running server may still be the old version
     if not args.no_export:

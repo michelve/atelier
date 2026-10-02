@@ -39,10 +39,14 @@ def hex_rgb(h, alpha=1.0):
     return (*lin, alpha)
 
 
+# Cycles GPU backends, best first: OptiX/CUDA (NVIDIA), Metal (Apple Silicon), HIP (AMD), oneAPI (Intel).
+GPU_BACKENDS = ("OPTIX", "CUDA", "METAL", "HIP", "ONEAPI")
+
+
 def use_gpu(scene):
     scene.render.engine = "CYCLES"
     prefs = bpy.context.preferences.addons["cycles"].preferences
-    for backend in ("OPTIX", "CUDA"):
+    for backend in GPU_BACKENDS:
         try:
             prefs.compute_device_type = backend
             prefs.get_devices()
@@ -58,7 +62,7 @@ def use_gpu(scene):
         except TypeError:
             continue
     scene.cycles.denoiser = "OPENIMAGEDENOISE"
-    print("TURNTABLE device CPU (no OptiX/CUDA device found)")
+    print("TURNTABLE device CPU (no GPU device found)")
 
 
 def colour_management(scene, look):

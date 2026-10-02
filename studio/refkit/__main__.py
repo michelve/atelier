@@ -208,8 +208,9 @@ def _result(cmd: str, res, seconds: float) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     args = build().parse_args(argv)
-    from . import common, meta
+    from . import caps, common, meta
     common.JSON_MODE = args.json
+    caps.check(args)   # stop early, with the alternative, when this machine can't run it (no CUDA on a Mac)
     if getattr(args, "prompt_file", None):
         args.prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
     t = time.time()

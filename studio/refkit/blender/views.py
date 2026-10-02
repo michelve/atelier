@@ -138,7 +138,7 @@ scene.render.image_settings.color_mode = "RGBA"
 scene.view_settings.view_transform = "AgX"
 
 prefs = bpy.context.preferences.addons["cycles"].preferences
-for backend in ("OPTIX", "CUDA"):
+for backend in ("OPTIX", "CUDA", "METAL", "HIP", "ONEAPI"):   # NVIDIA, Apple Silicon, AMD, Intel
     try:
         prefs.compute_device_type = backend
         prefs.get_devices()

@@ -233,7 +233,8 @@ def prune(wf: dict) -> dict:
 
 
 SAMPLERS = ("KSampler", "KSamplerAdvanced", "SamplerCustom", "CFGGuider", "BasicGuider", "DualCFGGuider")
-ATTENTION = os.environ.get("REFKIT_ATTENTION", "comfy kitchen attention")   # "pytorch attention" turns it off
+# "pytorch attention" turns it off; Comfy Kitchen is CUDA-only, so a Mac engine uses PyTorch's attention.
+ATTENTION = os.environ.get("REFKIT_ATTENTION", "comfy kitchen attention" if host.CUDA else "pytorch attention")
 
 
 def kitchen_attention(wf: dict) -> int:

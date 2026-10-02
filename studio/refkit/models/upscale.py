@@ -1,6 +1,7 @@
 """Super-resolution with any spandrel-supported model in <engine>\\models\\upscale_models (shared with ComfyUI).
 
-Falls back to Lanczos when no model or GPU is available, so callers never have to care.
+Runs on CUDA (fp16), Apple MPS (fp32) or the CPU; falls back to Lanczos when no model is installed, so callers
+never have to care.
 """
 from __future__ import annotations
 
@@ -29,11 +30,15 @@ def _model_path() -> Path | None:
 
 @lru_cache(maxsize=1)
 def _load(path: str):
-    import torch
     from spandrel import ModelLoader
+
+    from .. import host
     model = ModelLoader().load_from_file(path).eval()
-    if torch.cuda.is_available():
+    dev = host.torch_device()
+    if dev == "cuda":
         model = model.cuda().half() if model.supports_half else model.cuda()
+    elif dev == "mps":
+        model = model.to("mps")   # float32: half precision on MPS is not reliable for every architecture
     return model
 
 

@@ -71,7 +71,7 @@ def pickscore(prompt: str, images: list[Path]) -> list[float]:
     from transformers import AutoModel, AutoProcessor
 
     gpu.free_vram()   # CLIP-H in fp16 needs ~2 GB; ask ComfyUI to drop its models first
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    dev = host.torch_device()
     proc = AutoProcessor.from_pretrained(PROCESSOR, cache_dir=CACHE)
     model = AutoModel.from_pretrained(MODEL, cache_dir=CACHE, dtype=torch.float16 if dev == "cuda" else None).eval().to(dev)
     with torch.no_grad():
@@ -85,8 +85,7 @@ def pickscore(prompt: str, images: list[Path]) -> list[float]:
         te = te / te.norm(dim=-1, keepdim=True)
         scores = (model.logit_scale.exp() * (te @ ie.T))[0].float().cpu().tolist()
     del model
-    if dev == "cuda":
-        torch.cuda.empty_cache()
+    host.empty_cache(dev)
     return [round(s, 3) for s in scores]
 
 

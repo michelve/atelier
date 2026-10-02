@@ -167,7 +167,9 @@ def describe(img: Image.Image, how: str) -> dict | str | None:
         try:
             from google import genai
             from google.genai import types
-            r = genai.Client().models.generate_content(
+
+            from .host import secret
+            r = genai.Client(api_key=secret("GEMINI_API_KEY") or secret("GOOGLE_API_KEY")).models.generate_content(
                 model=GEMINI_MODEL,
                 contents=[types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"), VISION_PROMPT],
                 config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2))

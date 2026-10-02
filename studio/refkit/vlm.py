@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from . import gpu
+from . import gpu, host
 from .common import MODELS, RefkitError, log
 
 BASE = MODELS / "vlm" / "Qwen3-VL-8B-Instruct"
@@ -27,6 +27,8 @@ def load():
     global _model, _processor, _has_lora
     if _model is not None:
         return _model, _processor
+    if not host.CUDA:
+        raise RefkitError("refkit: the local VLM (Qwen3-VL in 4-bit bitsandbytes) needs an NVIDIA GPU")
     if not (BASE / "config.json").exists():
         raise RefkitError(f"refkit: local VLM not installed ({BASE}); run the setup screen's step 5 (local AI stack)")
     import torch
