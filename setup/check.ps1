@@ -96,7 +96,7 @@ if ($Deep) {
         Check 'deep' 'refkit vectorize (SSIM >= 0.9)' ($vr -and $vr.ssim -ge 0.9) ($vr ? "ssim $($vr.ssim), $($vr.paths) paths" : '')
         refkit render cube.glb --frames 1 --res 256x256 --samples 8 *> $null
         Check 'deep' 'refkit render (Cycles GPU still)' (Test-Path 'cube.refkit\poster.webp')
-        refkit qa flat.refkit\vector.svg --ref flat.png *> $null
+        refkit qa flat.refkit/vector.svg --ref flat.png *> $null
         Check 'deep' 'refkit qa' ($LASTEXITCODE -eq 0)
         # Whole pipeline: workflows vs this ComfyUI, gen + cutout, to3d + inspect, render, local critic (~4 min).
         refkit smoke --no-export *> $null

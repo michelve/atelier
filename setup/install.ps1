@@ -164,7 +164,7 @@ $Steps = @(
            @{ State = $(if ($t.Current) { 'done' } else { 'partial' }); Note = $(if ($t.Current) { $t.When } else { 'scheduled, but for another folder' }) }
        }
        Run = { Register-ScheduledUpdate } }
-    @{ Key = 'bench'; Title = 'Tune speed for this GPU'; Detail = "optional: refkit bench (~15 min), then copy the winning flags into setup\$OsKey\$(Split-Path (Get-ShimPath 'comfy') -Leaf) and re-run step 5"; Optional = $true
+    @{ Key = 'bench'; Title = 'Tune speed for this GPU'; Only = 'windows'; Detail = "optional: refkit bench (~15 min), then copy the winning flags into setup\$OsKey\$(Split-Path (Get-ShimPath 'comfy') -Leaf) and re-run step 5"; Optional = $true
        Check = {
            $r = Get-Item "$AtelierRoot/scratch/bench/results.json" -ErrorAction Ignore
            if ($r) { @{ State = 'done'; Note = "results $($r.LastWriteTime.ToString('yyyy-MM-dd'))" } } else { @{ State = 'todo'; Note = 'not run' } }
@@ -182,9 +182,12 @@ function Invoke-Phase([string]$Script, [string[]]$Extra) {
 }
 
 # --- screen ------------------------------------------------------------------------------------------------
-$Tags = @{ done = @('[done]', 'Green'); todo = @('[todo]', 'Yellow'); partial = @('[part]', 'DarkYellow'); warn = @('[warn]', 'Magenta') }
+$Tags = @{ done = @('[done]', 'Green'); todo = @('[todo]', 'Yellow'); partial = @('[part]', 'DarkYellow'); warn = @('[warn]', 'Magenta')
+          na = @('[n/a] ', 'DarkGray') }
 
 function Get-StepStatus($Step) {
+    # A step with Only = '<os>' doesn't apply elsewhere (e.g. bench tunes CUDA flags).
+    if ($Step.Only -and $Step.Only -ne $OsKey) { return @{ State = 'na'; Note = "not on $OsKey" } }
     try { & $Step.Check } catch { @{ State = 'todo'; Note = "check failed: $($_.Exception.Message)" } }
 }
 
@@ -208,6 +211,7 @@ function Show-Screen {
 
 function Invoke-Step([int]$Index) {
     $s = $Steps[$Index]
+    if ($s.Only -and $s.Only -ne $OsKey) { Write-Skip "$($s.Title): not on $OsKey"; return $true }
     Write-Host ''
     Write-Host "==> $($Index + 1). $($s.Title)" -ForegroundColor Cyan -NoNewline
     Write-Host " - $($s.Detail)" -ForegroundColor DarkGray

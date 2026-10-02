@@ -52,7 +52,8 @@ def main() -> None:
         if (want := comfy.installed_version()) and want != s["system"]["comfyui_version"]:
             say(f"  ComfyUI {want} is installed but not running yet: `refkit smoke` restarts it when no jobs run")
     else:
-        say("  ComfyUI down (starts automatically when needed; or run `comfy` / Comfy Desktop)")
+        say("  ComfyUI down (starts automatically when needed; or run `comfy` / Comfy Desktop)" if caps.engine_installed()
+            else "  local engine not installed (optional here; setup step 5)")
     try:
         ps = requests.get(f"{OLLAMA}/api/ps", timeout=2).json().get("models", [])
         say(f"  Ollama up (optional), loaded: {', '.join(m['name'] for m in ps) or 'none'}")

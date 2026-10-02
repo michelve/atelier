@@ -11,7 +11,7 @@ $VenvImports   = 'torch, cv2, vtracer, trimesh, spandrel'
 $TorchGpuProbe = 'torch.backends.mps.is_available()'
 # The local engine is optional on a Mac; tools the check skips when they are missing.
 $EngineRequired = $false
-$OptionalTools  = @('vtracer', 'toktx', 'ktx', 'comfy')
+$OptionalTools  = @('vtracer', 'toktx', 'ktx', 'comfy', 'python')   # python: uv builds the venvs
 $SkillLinkType  = 'SymbolicLink'
 
 # --- user environment -----------------------------------------------------------------------------------------
