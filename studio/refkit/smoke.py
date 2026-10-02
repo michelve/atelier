@@ -1,4 +1,4 @@
-"""refkit smoke: after a ComfyUI update, prove the pipeline still works (fast, ~1 min).
+"""refkit smoke: after a ComfyUI update, prove the pipeline still works (~4 min; --quick ~1 min).
 
   1. re-export every workflow in studio\\workflows from the bundled templates when the templates package changed
      (AISetup\\templates\\export-comfy-workflows.py, the real frontend's graphToPrompt)

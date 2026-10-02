@@ -20,8 +20,8 @@ def _critic(paths: list[Path], brief: str, ref: Path | None, kind: str) -> list[
         ranked = critique.rank(paths, brief, ref, kind)
         vlm.unload()
         return ranked
-    except SystemExit as e:   # VLM not installed: scores only
-        log(f"critic unavailable ({e}); ranking by score only")
+    except (SystemExit, Exception) as e:   # not installed, import/driver error, OOM: scores only
+        log(f"critic unavailable ({str(e)[:160]}); ranking by score only")
         return None
 
 
@@ -59,7 +59,7 @@ def write_report(dest: Path, title: str, rounds: list[dict], pick: dict) -> Path
 
 def gen_loop(args, generate) -> dict:
     """`generate(seed_offset)` runs one batch and returns gen's result dict (with ranked/contact from --pick)."""
-    from .qa import QUOTED
+    from .qa import wanted_text
     rounds, pick = [], None
     ref = Path(args.image.split(",")[0]).resolve() if args.image else None
     for r in range(max(1, args.rounds)):
@@ -71,9 +71,12 @@ def gen_loop(args, generate) -> dict:
         # brief second.)
         critic = _critic(top, args.prompt, ref, "image") if len(top) > 1 else None
         order = top
-        # gen already read the text of every candidate (res["text_check"]); reuse it
-        texts = {str(p): res.get("text_check", {}).get(str(p), []) for p in order} if QUOTED.search(args.prompt) else {}
-        good = [p for p in order if all(x["found"] for x in texts.get(str(p), []))]
+        # gen already read the text of every candidate (res["text_check"]); check all of them, best score first.
+        # Only a Qwen3-VL reading can veto a candidate: tesseract misreads stylised type (advisory, as in qa).
+        everyone = [p for p, _ in ranked]
+        texts = {str(p): res.get("text_check", {}).get(str(p), []) for p in everyone} if wanted_text(args.prompt) else {}
+        good = [p for p in everyone
+                if all(x["found"] or x.get("reader") != "qwen3-vl" for x in texts.get(str(p), []))]
         rounds.append({"ranked": [(str(p), s) for p, s in ranked], "critic": critic, "text": texts,
                        "contact": res.get("contact")})
         if good:

@@ -16,7 +16,7 @@ From Git Bash, `.cmd` shims need the extension (`blender.cmd`); pwsh/cmd/Python 
 |---|---|---|
 | ComfyUI 0.38 portable | `<engine>\ComfyUI`, `comfy` shim, http://127.0.0.1:8188 | torch 2.14.1+cu130; localhost only, `--disable-api-nodes`; speed flags from `refkit bench` (`--fast fp16_accumulation cublas_ops --high-ram --reserve-vram 1`); Comfy Kitchen INT8 attention is set per workflow by refkit (`ModelAttentionBackend` node; `REFKIT_ATTENTION="pytorch attention"` turns it off). refkit finds/starts it on 8188-8195 and shares Comfy Desktop's server |
 | Comfy Desktop | Start menu "Comfy Desktop" | UI only; tracks the same portable install ("AIStudio (portable)"). Don't use its Update button — `<repo>\setup\update-tools.ps1` updates + syncs the version |
-| Models | `<engine>\models` | images: Z-Image-Turbo, Qwen-Image 2.1 (+edit, RGBA, 9B prompt enhancers; LoRAs: AnyAngle, Consistency), Krea 2 Turbo (+style LoRA), FLUX.2 klein 4B, HiDream-O1 Dev · albedo: Marigold V2 (Qwen-Image-Edit 2509 + LoRA) · upscale: SeedVR2 3B/7B, 4x-UltraSharp, RealESRGAN · segment: SAM 3.1, BiRefNet · depth/geometry: Depth Anything 3, MoGe 2/3 · 3D: Pixal3D (+multi-view), TRELLIS.2, Hunyuan3D 2.1, TripoSplat · video: Wan 2.2 (local A/B), FILM · judging: Qwen3-VL-8B (`models\vlm`, 4-bit), EditScore LoRA, HPSv3++ NF4, PickScore (`models\scoring`) |
+| Models | `<engine>\models` | images: Z-Image-Turbo, Qwen-Image 2.1 (+edit, RGBA, 9B prompt enhancers; LoRAs: AnyAngle, Consistency), Krea 2 Turbo (+style LoRA), FLUX.2 klein 4B, HiDream-O1 Dev · albedo: Marigold V2 (Qwen-Image-Edit 2509 + LoRA) · upscale: SeedVR2 3B/7B, 4x-UltraSharp, RealESRGAN · segment: SAM 3.1, BiRefNet · depth/geometry: Depth Anything 3, MoGe 2 · 3D: Pixal3D (+multi-view), TRELLIS.2, Hunyuan3D 2.1 · video: Wan 2.2 TI2V 5B + I2V 14B (lightx2v 4-step LoRA), FILM · downloaded, not wired yet: MoGe 3, TripoSplat · judging: Qwen3-VL-8B (`models\vlm`, 4-bit), EditScore LoRA, HPSv3++ NF4, PickScore (`models\scoring`) |
 | API workflows | `<repo>\studio\workflows\*.api.json` | exported from the core templates (`.templates-version` stamp); `refkit smoke` re-exports + validates after updates |
 | refkit venv | `<engine>\venvs\refkit` (py 3.12, torch 2.14.1+cu130) | opencv, scikit-image, vtracer, trimesh, pygltflib, spandrel, open3d, transformers 5.18, bitsandbytes 0.50, accelerate, peft, editscore, qwen-vl-utils, google-genai<3 |
 | HPSv3++ scorer | `<engine>\tools\hpsv3-4bit` (own uv env, transformers <5.18) | `Stella2211/hpsv3-4bit` @ a4c8dc5 (MIT); `score.py` runs its `hpsv3pp-score` |
@@ -69,3 +69,10 @@ cu130 index), then `refkit smoke` + `refkit bench`.
 - Text read-back (qa, `gen` with quoted text): Qwen3-VL read 18/18 strings on 9 stylised posters and transcribed a
   misspelt "CAP BLANK" as written; tesseract read 3/12 of the same strings (so it is only an advisory fallback).
   ~17 s to load the VLM once, then <1 s per image.
+
+## Version check (2026-10-02, primary sources)
+ComfyUI v0.38.0 = latest release (pins templates 0.11.70 and comfy-kitchen 0.2.36, both installed; templates
+0.11.74 exists on PyPI but follows the next ComfyUI pin) · torch 2.14.1, transformers 5.18.0, bitsandbytes 0.50.2 =
+latest on PyPI · hpsv3-4bit a4c8dc5 = repo head · Qwen3-VL-8B-Instruct, AnyAngle LoRA, Consistency LoRA (updated
+2026-10-01), HPSv3++ NF4 = current on Hugging Face · ComfyUI issue #16027 still open (refkit's per-workflow
+attention, see above) · ComfyUI-Trellis2 last commit 2026-09-25, still no torch 2.14 wheels · LTX-2.5 still gated.

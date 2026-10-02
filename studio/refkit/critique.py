@@ -61,6 +61,12 @@ def compare(a: Path, b: Path, brief: str, ref: Path | None, kind: str) -> tuple[
     return (w if w in ("A", "B") else "?"), str(out.get("reason", ""))
 
 
+def _label(p: Path) -> str:
+    """inspect sheets are <run>/inspect/views.png: name them by the run folder; images by their file stem."""
+    p = Path(p)
+    return p.parent.parent.name if p.name == "views.png" and p.parent.name == "inspect" else p.stem
+
+
 def rank(items: list[Path], brief: str = "", ref: Path | None = None, kind: str = "image") -> list[dict]:
     """Round-robin of order-swapped pairs. Score: 1 per consistent win, 0.5 each for a tie/flip."""
     score = {p: 0.0 for p in items}
@@ -72,7 +78,7 @@ def rank(items: list[Path], brief: str = "", ref: Path | None = None, kind: str 
         second = {"A": y, "B": x}.get(w2)
         if first is not None and first == second:
             score[first] += 1
-            notes[first].append(f"beat {Path(y if first == x else x).parent.name or 'other'}: {r1 or r2}")
+            notes[first].append(f"beat {_label(y if first == x else x)}: {r1 or r2}")
         else:
             score[x] += 0.5
             score[y] += 0.5

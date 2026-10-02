@@ -59,14 +59,12 @@ def editscore(instruction: str, source: Path, images: list[Path]) -> list[float]
         return None
     try:
         ev = vlm.editscore()
-    except SystemExit as e:
-        log(f"EditScore unavailable, using PickScore: {e}")
+        scores = [round(float(ev.evaluate([str(source), str(p)], instruction)["overall"]), 3) for p in images]
+    except (SystemExit, Exception) as e:   # not installed, import/driver error, OOM, unparsable verdict
+        log(f"EditScore unavailable, using PickScore: {str(e)[:160]}")
         return None
-    scores = []
-    for p in images:
-        r = ev.evaluate([str(source), str(p)], instruction)
-        scores.append(round(float(r["overall"]), 3))
-    vlm.unload()
+    finally:
+        vlm.unload()
     return scores
 
 

@@ -46,11 +46,23 @@ def _kb(p: Path) -> float:
     return round(p.stat().st_size / 1024, 1)
 
 
-QUOTED = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]{2,80})["\u201c\u201d]')
+QUOTED = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]{1,80})["\u201c\u201d]')
+# A quoted span is text to render only when the prompt says so right before it ('the word "TEA"', 'a sign that
+# reads "OPEN"', 'headline text "CAP BLANC"'); quotes used for emphasis or inch marks (27" … 13") are not.
+_TEXT_CUE = re.compile(r"\b(text|texts|word|words|reads?|reading|says?|saying|titled?|label(?:led|ed)?|headline|"
+                       r"caption|sign|logo|lettering|letters|written|wordmark|slogan|tagline|banner|typography)\b"
+                       r"[^\"\u201c]{0,40}$", re.I)
+
+
+def wanted_text(prompt: str) -> list[str]:
+    """The quoted strings the prompt asks to be rendered (see _TEXT_CUE)."""
+    return [m.group(1) for m in QUOTED.finditer(prompt or "")
+            if _norm(m.group(1)) and _TEXT_CUE.search(prompt[:m.start()])]
 
 
 def _norm(text: str) -> str:
-    return re.sub(r"[^0-9a-z]+", " ", text.casefold()).strip()
+    """Case-folded words (any script, accents kept), punctuation and spacing dropped."""
+    return " ".join(re.sub(r"[\W_]+", " ", text.casefold()).split())
 
 
 READ_PROMPT = ("Transcribe all text visible in this image exactly as written, one line per text element. "
@@ -66,7 +78,8 @@ def read_text(images: list[Path]) -> dict[str, tuple[str, str]]:
         out = {str(p): (vlm.ask([p], READ_PROMPT, max_new_tokens=120), "qwen3-vl") for p in images}
         vlm.unload()
         return out
-    except SystemExit:
+    except (SystemExit, Exception) as e:   # not installed, import/driver error, OOM: fall back, don't lose the run
+        log(f"text read-back via tesseract (local VLM unavailable: {str(e)[:120]})")
         from .analyze import ocr
         return {str(p): (ocr(p, min_conf=40), "tesseract") for p in images}
 
@@ -75,17 +88,22 @@ def text_check(image: Path, prompt: str, read: tuple[str, str] | None = None) ->
     """Every "quoted" string in the prompt vs the text read in the image. Qwen3-VL: exact match after normalising
     case/punctuation/spacing (catches misspellings). Tesseract fallback: fuzzy (>= 0.8), and only advisory."""
     from difflib import SequenceMatcher
-    wanted = [w for w in QUOTED.findall(prompt or "") if _norm(w)]
+    wanted = wanted_text(prompt)
     if not wanted:
         return []
     text, reader = read or read_text([image])[str(image)]
-    seen = " ".join(_norm(text).split())
+    seen = _norm(text)
     words = seen.split()
     rows = []
     for w in wanted:
-        target = " ".join(_norm(w).split())
+        target = _norm(w)
         if reader == "qwen3-vl":
-            rows.append({"text": w, "found": target in seen, "reader": reader})
+            # whole words in order ("GO" is not found in "GOOD"); unspaced scripts (CJK: no Latin letters/digits)
+            # have no word breaks, so those compare as a run of characters
+            t = target.split()
+            found = (any(words[i:i + len(t)] == t for i in range(len(words) - len(t) + 1))
+                     if re.search(r"[a-z0-9]", target) else target.replace(" ", "") in seen.replace(" ", ""))
+            rows.append({"text": w, "found": found, "reader": reader})
             continue
         n, best = len(target.split()), 0.0
         for size in {max(1, n - 1), n, n + 1}:
@@ -110,7 +128,7 @@ def check_raster(p: Path, rep: Report, tokens: dict) -> None:
     if "icc_profile" in im.info:
         rep.add("colour profile", "PASS", "embedded ICC profile")
     side = _sidecar(p)
-    wants = side.get("command") in ("gen", "fix") and QUOTED.search(side.get("prompt", "") or "")
+    wants = side.get("command") in ("gen", "fix") and wanted_text(side.get("prompt", ""))
     for row in text_check(p, side["prompt"], _READ.get(str(p))) if wants else []:
         rep.check(f'text "{row["text"][:24]}"', row["found"], f"read by {row['reader']}"
                   + ("" if row["reader"] == "qwen3-vl" else " (advisory: tesseract misreads stylised type)"),
@@ -338,7 +356,7 @@ def main(args) -> bool:
     ok = True
     texty = [Path(f).resolve() for f in args.files if Path(f).suffix.lower() in RASTER
              and _sidecar(Path(f).resolve()).get("command") in ("gen", "fix")
-             and QUOTED.search(_sidecar(Path(f).resolve()).get("prompt", "") or "")]
+             and wanted_text(_sidecar(Path(f).resolve()).get("prompt", ""))]
     if texty:
         _READ.update(read_text(texty))
     for f in args.files:

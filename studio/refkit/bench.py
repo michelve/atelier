@@ -24,8 +24,11 @@ from PIL import Image
 from . import comfy, gen, to3d
 from .common import SCRATCH, STUDIO_ROOT, log, say
 
+# Launch flags are compared with refkit's per-workflow Comfy Kitchen node switched off (it would otherwise run in every
+# set); "kitchen-node" is the baseline flags with the node on, i.e. what refkit actually runs.
 DEFAULT_SETS = [
     ("baseline", ""),
+    ("kitchen-node", ""),
     ("ck-attn", "--use-ck-attention"),
     ("fast", "--fast fp16_accumulation cublas_ops"),
     ("ck+fast", "--use-ck-attention --fast fp16_accumulation cublas_ops"),
@@ -114,6 +117,7 @@ def diff(a: Path | None, b: Path | None) -> float | None:
 def bench_set(label: str, flags: str, full: bool, cutout: Path | None) -> dict:
     dest = OUT / label
     dest.mkdir(parents=True, exist_ok=True)
+    comfy.ATTENTION = "comfy kitchen attention" if label == "kitchen-node" else "pytorch attention"
     t0 = time.time()
     start(flags)
     res: dict = {"label": label, "flags": flags, "startup_s": round(time.time() - t0, 1)}

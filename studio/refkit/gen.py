@@ -304,8 +304,8 @@ def batch(args, model: str, images: list[str], refs: list[str], dest: Path, offs
                 outs.append(final)
                 log(f"{final}  (seed {seed})")
     result = {"outputs": [str(o) for o in outs], "model": model, "licence": meta.LICENCES.get(model), "seeds": seeds}
-    from .qa import QUOTED, read_text, text_check
-    if QUOTED.search(args.prompt):
+    from .qa import read_text, text_check, wanted_text
+    if wanted_text(args.prompt):
         read = read_text(outs)
         checks = {str(o): text_check(o, args.prompt, read[str(o)]) for o in outs}
         for o, rows in checks.items():
@@ -316,7 +316,8 @@ def batch(args, model: str, images: list[str], refs: list[str], dest: Path, offs
     if getattr(args, "pick", False) and len(outs) > 1:
         from . import score
         name = f"contact-{offset // 1000 + 1}.png" if offset else "contact.png"
-        ranked = score.rank(args.prompt, outs, dest, source=Path(refs[0]) if refs else None, name=name)
+        is_edit = model in ("qwen-edit", "klein-edit", "hidream-edit")
+        ranked = score.rank(args.prompt, outs, dest, source=Path(refs[0]) if refs and is_edit else None, name=name)
         result["ranked"] = [{"path": str(p), "score": s} for p, s in ranked]
         result["contact"] = str(dest / name)
     return result

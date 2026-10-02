@@ -54,8 +54,8 @@ Paths below: `<repo>` = the Atelier clone, `<engine>` = `ATELIER_ENGINE` (ComfyU
 | Logo, icon, flat art, must scale | `cutout` → `vectorize` → hand-finish SVG | — |
 | 3D object for render / WebGL | `cutout` → `to3d` (Pixal3D; levelled on its base; inspect sheet) · `--hard-edges` for hard-surface · `-n 3` / `--auto` to pick a seed · `--refine-views` for better backs/sides · `--delight` for glossy/lit photos · `--views f,l,b,r` for turnarounds · `--ktx2` for GPU textures | — |
 | Product 360° spin | `render model.glb` (Blender turntable: exact geometry) | — |
-| Video clip from a still / keyframes | make keyframes locally with `gen` | `video "motion" --from a.png [--to b.png] --yes` (Omni default; `-m veo-fast` for first+last/extension) |
-| Text-to-video | — | `video "…" --yes` (Omni 720p ≈ $0.10/s) |
+| Video clip from a still / keyframes | keyframes with `gen`, then `video "motion" -m wan --from a.png` (Wan 2.2 5B, 720p, ~3.5 min per 5 s) · `-m wan-fast` (14B 4-step, 480p, ~75 s; drafts) | hero clips, first+last frame (`--to`), extension → `video "motion" --from a.png [--to b.png] --yes` (Omni default; `-m veo-fast` for first+last/extension) |
+| Text-to-video | `video "…" -m wan` (720p) | `video "…" --yes` (Omni 720p ≈ $0.10/s) |
 | Existing Blender scene | `render FILE.blend --as-is` (keeps its camera, frames, colour), or Blender MCP | — |
 
 Local model licences (each output's `.json` sidecar names its model's licence): Qwen-Image 2.1 and its LoRAs are
@@ -80,7 +80,7 @@ hidream (MIT), Pixal3D/TRELLIS.2 (MIT), or Nano Banana.
 | `refkit critique A B …` | local VLM (Qwen3-VL-8B) ranks candidates pairwise, both orders | `--brief "…"` `--ref IMG` `--kind image\|3d` `--consistency` (front/left/back/right views agree?) |
 | `refkit runs` | recent runs from the index (model, seed, output); every output has a `.json` sidecar with licence + lineage | `--last 20` `--command to3d` |
 | `refkit render FILE` | Cycles OptiX turntable/still → MP4 + WebM + AVIF/WebP | `--frames 96` (1 = still) `--res` `--samples` `--look neutral\|orbitra` `--ground` (contact shadow) `--transparent` `--av1` `--as-is` |
-| `refkit video "MOTION" --yes` | Gemini Omni / Veo clip (paid) + optional local finish | `-m omni\|veo-fast\|veo\|veo-lite` `--from IMG` `--to IMG` `--ref IMG` `--seconds` `--aspect 9:16` `--continue ID` `--upscale` `--interp 2` · `--finish-only` on an existing clip |
+| `refkit video "MOTION" --yes` | local Wan 2.2 clip (free, `-m wan\|wan-fast`) or Gemini Omni / Veo (paid, default omni) + optional local finish | `-m wan\|wan-fast\|omni\|veo-fast\|veo\|veo-lite` `--from IMG` `--to IMG` `--ref IMG` `--seconds` `--aspect 9:16` `--continue ID` `--upscale` `--interp 2` · `--finish-only` on an existing clip |
 | `refkit qa FILES` | raster/svg/glb/video checks (metadata, halo, budgets, faststart, loop seam…) | `--ref IMG` `--tokens FILE` `--json` |
 | `refkit status` / `smoke` / `bench` | health · post-update test (incl. 3D, render, critic; `--quick` skips them) · speed-flag A/B | `bench --golden --label NAME [--compare OLD]` = the fixed-seed regression set |
 

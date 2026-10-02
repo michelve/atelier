@@ -74,7 +74,9 @@ def build() -> argparse.ArgumentParser:
     p = cmd("video", help="prompt/keyframes -> clip (Gemini Omni / Veo, own key) + local upscale/interpolation")
     p.add_argument("prompt", nargs="?", default="", help="the motion prompt (or a video file with --finish-only)")
     p.add_argument("--prompt-file", help="read the prompt from a UTF-8 text file (for prompts containing \" quotes)")
-    p.add_argument("-m", "--model", choices=["omni", "veo", "veo-fast", "veo-lite"], help="default omni")
+    p.add_argument("-m", "--model", choices=["wan", "wan-fast", "omni", "veo", "veo-fast", "veo-lite"],
+                   help="wan / wan-fast: local and free; omni (default) / veo*: Google, paid (--yes)")
+    p.add_argument("--seed", type=int, help="local models only")
     p.add_argument("--from", dest="frm", help="first frame image (e.g. from refkit gen)")
     p.add_argument("--to", help="last frame image")
     p.add_argument("--ref", action="append", default=[], help="subject/reference image (repeatable; Veo <= 3)")

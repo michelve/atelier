@@ -153,6 +153,8 @@ def build_views(views: list[Path], seed: int, texture: int, tris: int, prefix: s
         to_mask = upstream(link[0], "ImageCropToMask")
         if i >= len(views):
             del wf[cond]["inputs"][view]   # unused view: its chain becomes unreferenced and is pruned below
+            if wf[link[0]]["class_type"].startswith("Save"):
+                del wf[link[0]]   # the template's per-view "save the crop" node; prune() keeps every Save*
             continue
         wf[crop] = {"class_type": "LoadImage", "inputs": {"image": comfy.upload(views[i])}}
         if framed:   # already on the rig (same scale in every view, on black): no per-view crop to its silhouette
@@ -232,9 +234,11 @@ def main(args) -> dict:
         log("input has alpha: using it as the subject mask (no background re-segmentation)")
     gpu.free_vram(keep="comfy")
     comfy.ensure_running()
+    if args.refine_views and model != "pixal3d":
+        raise RefkitError("refkit: --refine-views rebuilds with Pixal3D multi-view; use -m pixal3d")
+    if (args.refine_views or args.delight) and not alpha:
+        raise RefkitError("refkit: --refine-views / --delight need a cutout (RGBA) as input: run `refkit cutout` first")
     if args.delight:
-        if not alpha:
-            raise RefkitError("refkit: --delight needs a cutout (RGBA) as input: run `refkit cutout` first")
         src = delight(src, base)
     if args.auto:
         args.count = max(args.count, 3)
@@ -244,10 +248,6 @@ def main(args) -> dict:
     runs = [finish(raw, raw.parent, model, seed, [src], gen_s, textured, args)
             for seed, (raw, gen_s) in zip(seeds, raws)]
     if args.refine_views:
-        if model != "pixal3d":
-            raise RefkitError("refkit: --refine-views rebuilds with Pixal3D multi-view; use -m pixal3d")
-        if not alpha:
-            raise RefkitError("refkit: --refine-views needs a cutout (RGBA) as input: run `refkit cutout` first")
         from . import multiview
         for r in list(runs):
             # The raw graph mesh, not model.glb: the side views must share the photo's camera frame (Pixal3D's

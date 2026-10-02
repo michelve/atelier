@@ -45,6 +45,8 @@ LICENCES = {
     "seedvr2": "Apache-2.0",
     "birefnet": "MIT",
     "sam3": "SAM License",
+    "wan": "Apache-2.0 (Wan 2.2)",
+    "wan-fast": "Apache-2.0 (Wan 2.2 + lightx2v LoRA)",
     "omni": "Google Gemini API terms (paid, SynthID watermark)",
     "veo": "Google Gemini API terms (paid, SynthID watermark)",
 }

@@ -57,7 +57,9 @@ $ComfyTemplates = @(
     'utility_seedvr2_3b_int8_upscale_image', 'utility_seedvr2_7b_int8_upscale_image',
     'utility_seedvr2_3b_int8_upscale_video', 'utility_video_frame_interpolation', '3d_pixal3d_multi_views',
     # added 2026-10-01 (upgrade): HiDream-O1 Dev (MIT photoreal + edit), Marigold V2 albedo (to3d --delight)
-    'image_hidream_o1_dev', 'image_marigold_v2_albedo_estimation'
+    'image_hidream_o1_dev', 'image_marigold_v2_albedo_estimation',
+    # local video (refkit video -m wan / wan-fast; Apache-2.0)
+    'video_wan2_2_5B_ti2v', 'video_wan2_2_14B_i2v'
 )
 $ComfyExtraModels = @(
     'upscale_models=https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors',
